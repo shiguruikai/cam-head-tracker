@@ -1,0 +1,18 @@
+# Intellij IDEA
+.idea/
+*.iml
+
+# Python
+__pycache__/
+.venv/
+venv/
+build/
+dist/
+
+# Build
+*.build/
+*.dist/
+*.onefile-build/
+
+# Config
+/config.ini
