@@ -12,8 +12,19 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "pip-licenses>=5.5.0",
     "ruff>=0.14.11",
 ]
 
 [tool.ruff]
 line-length = 120
+
+[tool.pip-licenses]
+format = "plain-vertical"
+with-license-file = "true"
+no-license-path = "true"
+ignore-packages = [
+    "pip-licenses",
+    "ruff",
+]
+output-file = "NOTICE.txt"
