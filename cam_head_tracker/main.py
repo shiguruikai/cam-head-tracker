@@ -1,5 +1,7 @@
 import argparse
+import ctypes
 import logging
+import platform
 import sys
 import tkinter as tk
 import traceback
@@ -20,6 +22,20 @@ def handle_exception(exc, val, tb):
     sys.exit(1)
 
 
+def enable_dpi_awareness():
+    """モニターのDPIに応じてGUIが自動的にスケーリングされるようにする。"""
+    if platform.system() == "Windows":
+        try:
+            # Windows 8.1以降
+            ctypes.windll.shcore.SetProcessDpiAwareness(1)
+        except (AttributeError, OSError):
+            try:
+                # Windows Vista以降
+                ctypes.windll.user32.SetProcessDPIAware()
+            except (AttributeError, OSError):
+                pass
+
+
 def main():
     parser = argparse.ArgumentParser(prog=Path(__file__).name, description="CamHeadTracker")
     parser.add_argument("--verbose", help="enable verbose output", action="store_true")
@@ -34,6 +50,8 @@ def main():
     )
 
     logger.debug("Parsed args: %s", args)
+
+    enable_dpi_awareness()
 
     root = tk.Tk()
     root.report_callback_exception = handle_exception
