@@ -5,27 +5,27 @@ changelog:
     authors:
       - github-actions[bot]
   categories:
-    - title: "🚀 新機能 (feat)"
+    - title: "🚀 新機能"
       labels:
         - feat
-    - title: "🐛 バグ修正 (fix)"
+    - title: "🐛 バグ修正"
       labels:
         - fix
-    - title: "🏗️ ビルド・依存関係 (build)"
+    - title: "🏗️ ビルド・依存関係"
       labels:
         - build
-    - title: "⚡ パフォーマンス改善 (perf)"
+    - title: "⚡ パフォーマンス改善"
       labels:
         - perf
-    - title: "♻️ リファクタリング (refactor)"
+    - title: "♻️ リファクタリング"
       labels:
         - refactor
-    - title: "📝 ドキュメント (docs)"
+    - title: "📝 ドキュメント"
       labels:
         - docs
-    - title: "🧪 テスト (test)"
+    - title: "🧪 テスト"
       labels:
         - test
-    - title: "⚙️ CI設定 (ci)"
+    - title: "⚙️ CI設定"
       labels:
         - ci
