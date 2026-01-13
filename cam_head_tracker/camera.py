@@ -123,8 +123,10 @@ class VideoCapture:
         cmd = [
             str(FFMPEG_PATH),
             "-hide_banner",
-            "-fflags", "nobuffer", # 入力ストリームの遅延を減らす
-            "-flags", "low_delay", # デコーダーの遅延を減らす
+            "-fflags", "nobuffer", # 入力ストリームの遅延を減らす。
+            "-fflags", "discardcorrupt", # 破損パケットをデコーダーに渡さず破棄する。
+            "-flags", "low_delay", # エンコード／デコードの遅延を減らす。※H.264入力の場合以外では効果はなさそう。
+            "-err_detect", "explode", # デコーダーでデータの破損を検知した際、デコードせず破棄する。
             "-f", "dshow",
             f"-{self._input_format_type}", f"{self._input_format}",
             "-video_size", f"{self._width}x{self._height}",
