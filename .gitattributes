@@ -1,6 +1,28 @@
+# --- Default ---
 * text=auto eol=lf
 
-# Windows
-*.bat   text eol=crlf
-*.cmd   text eol=crlf
-*.ps1   text eol=crlf
+# --- Windows Scripts (Force CRLF) ---
+*.bat    text eol=crlf
+*.cmd    text eol=crlf
+*.ps1    text eol=crlf
+
+# --- Binaries (Protection) ---
+# Executables & Libraries
+*.dll    binary
+*.exe    binary
+
+# Media & Assets
+*.gif    binary
+*.ico    binary
+*.jpeg   binary
+*.jpg    binary
+*.mp4    binary
+*.png    binary
+*.webp   binary
+
+# Models & Data
+*.task   binary
+
+# Archives
+*.7z     binary
+*.zip    binary
