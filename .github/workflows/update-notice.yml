@@ -1,0 +1,35 @@
+name: Update License Notice
+
+on:
+  push:
+    branches: [ master ]
+    paths:
+      - 'pyproject.toml'
+      - 'uv.lock'
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Generate NOTICE.txt
+        run: |
+          uv sync --frozen
+          uv run pip-licenses
+
+      - name: Commit and Push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add NOTICE.txt
+          # 差分がある場合のみコミット
+          if ! git diff --cached --exit-code; then
+            git commit -m "docs: update NOTICE.txt [skip ci]"
+            git push
+          fi
