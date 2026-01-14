@@ -26,6 +26,6 @@ changelog:
     - title: "🧪 テスト"
       labels:
         - test
-    - title: "⚙️ CI設定"
+    - title: "⚙️ CI"
       labels:
         - ci
