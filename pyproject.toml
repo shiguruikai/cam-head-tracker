@@ -7,12 +7,12 @@ dependencies = [
     "mediapipe>=0.10.31",
     "numpy>=2.2.6",
     "pillow>=12.1.0",
-    "pyinstaller>=6.17.0",
 ]
 
 [dependency-groups]
 dev = [
     "pip-licenses>=5.5.0",
+    "pyinstaller>=6.18.0",
     "ruff>=0.14.11",
 ]
 
@@ -25,6 +25,7 @@ with-license-file = "true"
 no-license-path = "true"
 ignore-packages = [
     "pip-licenses",
+    "pyinstaller",
     "ruff",
 ]
 output-file = "NOTICE.txt"
