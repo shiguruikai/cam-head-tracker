@@ -28,12 +28,12 @@ dependencies = [
     { name = "mediapipe" },
     { name = "numpy" },
     { name = "pillow" },
-    { name = "pyinstaller" },
 ]
 
 [package.dev-dependencies]
 dev = [
     { name = "pip-licenses" },
+    { name = "pyinstaller" },
     { name = "ruff" },
 ]
 
@@ -42,12 +42,12 @@ requires-dist = [
     { name = "mediapipe", specifier = ">=0.10.31" },
     { name = "numpy", specifier = ">=2.2.6" },
     { name = "pillow", specifier = ">=12.1.0" },
-    { name = "pyinstaller", specifier = ">=6.17.0" },
 ]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "pip-licenses", specifier = ">=5.5.0" },
+    { name = "pyinstaller", specifier = ">=6.18.0" },
     { name = "ruff", specifier = ">=0.14.11" },
 ]
 
