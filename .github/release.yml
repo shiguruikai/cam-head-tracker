@@ -14,6 +14,7 @@ changelog:
     - title: "🏗️ ビルド・依存関係"
       labels:
         - build
+        - dependencies
     - title: "⚡ パフォーマンス改善"
       labels:
         - perf
