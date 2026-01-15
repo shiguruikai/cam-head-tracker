@@ -21,7 +21,8 @@ RUN apt-get -yqq update && apt-get install -yq --no-install-recommends \
 
 WORKDIR /tmp/workdir
 
-RUN git clone --depth 1 https://git.ffmpeg.org/ffmpeg.git ffmpeg
+ARG FFMPEG_TAG=master
+RUN git clone --depth 1 -b ${FFMPEG_TAG} https://git.ffmpeg.org/ffmpeg.git ffmpeg
 
 WORKDIR /tmp/workdir/ffmpeg
 

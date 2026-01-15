@@ -1,0 +1,91 @@
+name: FFmpeg Auto Build
+
+on:
+  schedule:
+    - cron: '0 23 * * *' # 毎日JST 08:00に実行
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Get FFmpeg latest version
+        id: ffmpeg_meta
+        run: |
+          LATEST_TAG=$(
+            git ls-remote --tags https://git.ffmpeg.org/ffmpeg.git 'refs/tags/n*' |
+              cut -d/ -f3 |
+              grep -E '^n[0-9]+(\.[0-9]+)*$' |
+              sort -V |
+              tail -n 1
+          )
+          echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
+
+      - name: Compare versions
+        id: compare
+        run: |
+          CURRENT_TAG=$(cat ffmpeg-builder/version 2>/dev/null || echo "none")
+
+          if [ "$CURRENT_TAG" != "${{ steps.ffmpeg_meta.outputs.latest_tag }}" ]; then
+            echo "should_bump=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_bump=false" >> $GITHUB_OUTPUT
+          fi
+
+          echo "current_tag=$CURRENT_TAG" >> $GITHUB_OUTPUT
+
+      - name: Build FFmpeg
+        id: build
+        if: steps.compare.outputs.should_bump == 'true'
+        run: |
+          echo "${{ steps.ffmpeg_meta.outputs.latest_tag }}" > ffmpeg-builder/version
+
+          chmod +x ffmpeg-builder/build.sh
+          ./ffmpeg-builder/build.sh
+
+          EXE_PATH="ffmpeg-builder/out/ffmpeg.exe"
+
+          if [ ! -f "$EXE_PATH" ]; then
+            echo "FFmpeg build failed"
+            exit 1
+          fi
+
+          SHA256_HASH=$(sha256sum "$EXE_PATH" | cut -d' ' -f1)
+          echo "hash=$SHA256_HASH" >> $GITHUB_OUTPUT
+
+          cp "$EXE_PATH" cam_head_tracker/assets/ffmpeg.exe
+          rm -r ffmpeg-builder/out
+
+      - name: Create Pull Request
+        if: steps.compare.outputs.should_bump == 'true'
+        uses: peter-evans/create-pull-request@v8
+        with:
+          branch: bump-ffmpeg-${{ steps.ffmpeg_meta.outputs.latest_tag }}
+          commit-message: "build: bump FFmpeg from ${{ steps.compare.outputs.current_tag }} to ${{ steps.ffmpeg_meta.outputs.latest_tag }}"
+          title: "build: bump FFmpeg from ${{ steps.compare.outputs.current_tag }} to ${{ steps.ffmpeg_meta.outputs.latest_tag }}"
+          body: |
+            FFmpeg のリポジトリから安定版リリースの新しいタグ `${{ steps.ffmpeg_meta.outputs.latest_tag }}` を検知しました。
+
+            ## 内容
+            - `ffmpeg-builder/version`: ${{ steps.compare.outputs.current_tag }} から ${{ steps.ffmpeg_meta.outputs.latest_tag }} へ更新
+            - `cam_head_tracker/assets/ffmpeg.exe`: ${{ steps.ffmpeg_meta.outputs.latest_tag }} のバージョンで再ビルド
+
+            ### 検証情報
+            - Build Bot: `github-actions[bot]`
+            - ffmpeg.exe sha256: `${{ steps.build.outputs.hash }}`
+
+            ---
+            *この PR は自動生成されました。Verified バッジとハッシュ値を確認し、テストした上でマージしてください。*
+          labels: |
+            build
+            dependencies
+            ffmpeg

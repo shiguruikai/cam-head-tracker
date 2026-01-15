@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
+set -euxo pipefail
 
-cd "$(dirname "$0")" || exit 1
+cd "$(dirname "$0")"
 
-docker build -t ffmpeg-builder -o out .
+TARGET_TAG=$(cat ./version)
+
+docker build --build-arg FFMPEG_TAG="$TARGET_TAG" -t ffmpeg-builder -o out .
