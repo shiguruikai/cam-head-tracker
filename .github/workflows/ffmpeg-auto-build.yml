@@ -70,6 +70,7 @@ jobs:
         if: steps.compare.outputs.should_bump == 'true'
         uses: peter-evans/create-pull-request@v8
         with:
+          sign-commits: true
           branch: bump-ffmpeg-${{ steps.ffmpeg_meta.outputs.latest_tag }}
           commit-message: "build: bump FFmpeg from ${{ steps.compare.outputs.current_tag }} to ${{ steps.ffmpeg_meta.outputs.latest_tag }}"
           title: "build: bump FFmpeg from ${{ steps.compare.outputs.current_tag }} to ${{ steps.ffmpeg_meta.outputs.latest_tag }}"
