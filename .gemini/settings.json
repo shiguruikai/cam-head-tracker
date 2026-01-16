@@ -1,0 +1,12 @@
+{
+    "ide": {
+        "enabled": true
+    },
+    "context": {
+        "fileName": [
+            "AGENTS.md",
+            "README.md",
+            "pyproject.toml"
+        ]
+    }
+}
