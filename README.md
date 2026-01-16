@@ -6,16 +6,16 @@ Web カメラを使用して頭の動き（6DoF: X, Y, Z, Yaw, Pitch, Roll）を
 
 ## 特徴
 
--   **ヘッドトラッキング:** オフラインで高精度な姿勢推定ができる MediaPipe Face landmark detection を使用。
--   **キャリブレーション機能:** 水平移動したときの姿勢データのサンプルをもとに、カメラの設置位置（高さ、角度）を算出して補正する。
--   **UDP 送信:** 姿勢データを UDP で送信。[opentrack](https://github.com/opentrack/opentrack) の入力として使用可能。
+- **ヘッドトラッキング:** オフラインで高精度な姿勢推定ができる MediaPipe Face landmark detection を使用。
+- **キャリブレーション機能:** 水平移動したときの姿勢データのサンプルをもとに、カメラの設置位置（高さ、角度）を算出して補正する。
+- **UDP 送信:** 姿勢データを UDP で送信。[opentrack](https://github.com/opentrack/opentrack) の入力として使用可能。
 
 ## 動作環境
 
--   Windows OS
--   Web カメラ<br>
-    ※代わりに、USB Web カメラとして使用できる機能を備えた Android 14 以降のスマートフォンでも利用可能。<br>
-    ※映像に乱れや遅延が発生したときは、USB 3.0 以上の規格に対応した高速なケーブルを使用すること。
+- Windows OS
+- Web カメラ<br>
+  ※代わりに、USB Web カメラとして使用できる機能を備えた Android 14 以降のスマートフォンでも利用可能。<br>
+  ※映像に乱れや遅延が発生したときは、USB 3.0 以上の規格に対応した高速なケーブルを使用すること。
 
 ## 使用方法
 
@@ -41,30 +41,30 @@ Web カメラを使用して頭の動き（6DoF: X, Y, Z, Yaw, Pitch, Roll）を
 
 1. **リポジトリのクローン**
 
-    ```
-    git clone https://github.com/shiguruikai/cam-head-tracker.git
-    cd cam-head-tracker
-    ```
+   ```
+   git clone https://github.com/shiguruikai/cam-head-tracker.git
+   cd cam-head-tracker
+   ```
 
 2. **依存関係の同期**
 
-    ```
-    uv sync --frozen
-    ```
+   ```
+   uv sync --frozen
+   ```
 
 3. **アプリケーションの実行**
 
-    ```
-    uv run python -m cam_head_tracker.main
-    ```
+   ```
+   uv run python -m cam_head_tracker.main
+   ```
 
 4. **アプリケーションのビルド**
 
-    ```
-    uv run pyinstaller -y --clean build.spec
-    ```
+   ```
+   uv run pyinstaller -y --clean build.spec
+   ```
 
-    ビルド成果物は`dist\CamHeadTracker`ディレクトリに出力されます。
+   ビルド成果物は`dist\CamHeadTracker`ディレクトリに出力されます。
 
 ### MediaPipe モデルの更新
 
@@ -83,11 +83,11 @@ GitHub Actions のワークフローで FFmpeg の最新安定版を定期的に
 1. Docker を実行できる環境に`ffmpeg-builder`ディレクトリを配置します。
 2. ビルド対象のバージョン（FFmpeg のリポジトリにおけるタグまたはブランチ名）を`ffmpeg-builder/version`に記載します。
 3. スクリプトを実行してビルドします。
-    ```sh
-    cd ffmpeg-builder
-    chmod +x build.sh
-    ./build.sh
-    ```
+   ```sh
+   cd ffmpeg-builder
+   chmod +x build.sh
+   ./build.sh
+   ```
 4. 生成された`out/ffmpeg.exe`を`cam_head_tracker/assets/ffmpeg.exe`に配置します。
 
 ## バグ報告と貢献
@@ -102,5 +102,5 @@ GitHub Actions のワークフローで FFmpeg の最新安定版を定期的に
 
 本アプリの動作には以下のライブラリが含まれています。
 
--   FFmpeg (Custom build): [LGPL v2.1](ffmpeg-builder/LICENSE_FFMPEG.txt)
--   Third-Party Notices: [NOTICE.txt](NOTICE.txt)
+- FFmpeg (Custom build): [LGPL v2.1](ffmpeg-builder/LICENSE_FFMPEG.txt)
+- Third-Party Notices: [NOTICE.txt](NOTICE.txt)
