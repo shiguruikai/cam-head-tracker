@@ -369,7 +369,7 @@ class CamHeadTrackerApp(tk.Frame):
             logging.exception("Failed to load config.ini")
             messagebox.showerror("Error", "Failed to load config.ini")
 
-    def trak_loop(self):
+    def track_loop(self):
         try:
             for frame in self.cap.frames():
                 self.track_loop_inner(frame)
@@ -615,7 +615,7 @@ Roll   --.- °
         )
 
         # 7. トラッキングを開始
-        self.track_thread = threading.Thread(target=self.trak_loop, daemon=True)
+        self.track_thread = threading.Thread(target=self.track_loop, daemon=True)
         self.track_thread.start()
 
         # 8. プレビューを表示

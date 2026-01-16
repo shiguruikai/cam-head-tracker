@@ -156,9 +156,6 @@ class VideoCapture:
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
 
-    def is_opened(self) -> bool:
-        return self._proc.poll() is None
-
     def _read_stdout(self):
         poll = self._proc.poll
         read = self._proc.stdout.read
