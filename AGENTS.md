@@ -2,22 +2,71 @@
 
 ## プロジェクト概要
 
-Web カメラを使用して頭の動き（6DoF: X, Y, Z, Yaw, Pitch, Roll）をトラッキングし、姿勢データを opentrack に UDP で連携するための GUI アプリケーション。
+CamHeadTrackerは、Windows向けのカメラベースのヘッドトラッキングアプリケーションです。
+Webカメラを使用して、ユーザーの頭部の動きを6DoF（X、Y、Z、ヨー、ピッチ、ロール）でトラッキングし、そのデータをUDP経由で`opentrack`に送信します。
+
+## 使用している主要技術
+
+- 言語: Python 3.13
+- GUI: `tkinter`
+- 姿勢推定: `MediaPipe`のFace landmark detection
+- カメラ入力: `ffmpeg.exe`
+- 数値演算: `numpy`
+- 画像処理: `Pillow`
+- ビルド: `PyInstaller`の単一フォルダビルド（`--onedir`）
+- リンターおよびフォーマッター: `ruff`
+- パッケージ管理: `uv`
+- CI: `GitHub Actions`、`Docker`
 
 ## 一般的な指示
 
-- 本プロジェクトはパッケージマネージャーの`uv`を使用する。
-- コードは Python 3.13 との互換性が必要。最新の型ヒントを積極的に活用せよ。
-- **破壊的変更を行う場合は、必ず事前に警告せよ。**
-- `gh`コマンドを使用できる。ただし、**リモートリポジトリに変更を加える場合は、必ずユーザーに確認を求めよ。**
-- **仕様が不明瞭な場合や曖昧な点がある場合は、推測に基づいて変更を行う前に、ユーザーに確認または説明を求めよ。**
+- ユーザーには日本語で応答せよ。
+- 破壊的変更を行う場合は、必ず事前に警告せよ。
+- GitHub CLIの`gh`コマンドを使用可能。リモートリポジトリに変更を加える場合は、必ずユーザーに確認を求めよ。
+- コミットメッセージやPRの本文、技術解説などが長文になる場合は、`.gemini/tmp`フォルダに一時ファイル（例: `commit_msg.md` や `description.md`）として出力し、そのファイル名と概要をユーザーに提示せよ。
+- 仕様が不明瞭な場合や曖昧な点がある場合は、推測に基づいて変更を行う前に、ユーザーに確認または説明を求めよ。
+
+## ビルドと実行
+
+### ソースコードから実行
+
+```
+uv run python -m cam_head_tracker.main
+```
+
+### クリーンビルド
+
+```
+uv run pyinstaller -y --clean build.spec
+```
+
+ビルド成果物は`dist\CamHeadTracker`ディレクトリに出力される。
+
+## バージョニング
+
+本プロジェクトは、セマンティックバージョニング（SemVer）を使用する。
+
+### バージョンアップ手順
+
+1. **作業ブランチの作成:** `build/vX.X.X`の形式のブランチを作成する。
+2. **ファイルの更新:** `pyproject.toml`の`version`を変更する。
+3. **ロックファイルの更新:** `uv lock`を実行し、`uv.lock`を更新する。
+4. **変更内容の確認:** `uv.lock`内の自プロジェクトのバージョンが正しく更新されていることを確認する。
+5. **コミット:** `build: bump version to vX.X.X`の形式でコミットする。
+6. **タグ付けとプッシュ:** `vX.X.X`の形式のタグを付けて、ブランチとタグをプッシュする。
+7. **PRの作成:** プルリクエストを作成する。
+8. **リリース:** GitHub Actionsで自動作成されたReleaseドラフトをユーザーが確認し、問題なければリリースする。
+9. **後片付け:** 作業ブランチを削除する。
 
 ## コーディングスタイル
 
-- 既存のコーディングスタイルに従うこと。
-- コミットする前に必ず`ruff`でリントおよびフォーマットを実行せよ。
-  - `uv run ruff check --fix .`
-  - `uv run ruff format .`
+- 既存のコーディングスタイルに従え。
+- ソースコメントは、複雑な仕様やロジックを説明する場合にのみ記述せよ。
+- ソースコメントは日本語で、UIやログメッセージは英語で記述せよ。
+- 最新の型ヒントを積極的に活用せよ。
+- コードの変更後やコミットの直前には、リントおよびフォーマットを実行せよ。
+  - 単一ファイル: `uv run ruff check --fix <file>`, `uv run ruff format <file>`
+  - 全ファイル: `uv run ruff check --fix .`, `uv run ruff format .`
 
 ## テスト
 
@@ -30,107 +79,58 @@ Web カメラを使用して頭の動き（6DoF: X, Y, Z, Yaw, Pitch, Roll）を
 - 絶対に必要な場合を除き、新しい外部依存関係の導入は避けよ。
 - 新しい依存関係が必要な場合は、その理由を明記せよ。
 
-## Issue 規約
+## Commit Message Conventions
 
-Issue は以下の構成で作成せよ。
+- 以下の形式で記述せよ。
 
-### タイトル
+  ```
+  <type>: <short summary>
 
-日本語で簡潔な文章
+  [optional body]
+  ```
 
-### 説明
+- `type`には、以下のいずれかを使用せよ。
+  - `build`: ビルドシステムまたは外部依存関係の変更（uv, PyInstaller, FFmpeg ビルドなど）
+  - `ci`: CI 設定の変更（GitHub Actionsなど）
+  - `docs`: ドキュメントのみの変更
+  - `feat`: 新機能の追加
+  - `fix`: バグ修正
+  - `perf`: パフォーマンスを向上させる変更
+  - `refactor`: 機能追加もバグ修正も行わないコード変更
+  - `test`: テストの追加または既存テストの修正
+- `short summary`には、日本語または英語で簡潔に記述し、末尾にピリオドや句点を付けないこと。
+- `optional body`は、冗長さを排除し、`short summary`のみで内容が理解できる場合は省略せよ。
 
-問題点、原因、期待する動作、解決策等を記述する。
+## Issue Conventions
 
-### ラベル
+- **タイトル（title）:** 簡単な概要を記述せよ。
+- **本文（body）:** 説明、再現手順、期待する動作、原因、対応案などを自由に記述せよ。
+- **ラベル（label）:** **build, ci, docs, feat, bug, perf, refactor, test, question**のいずれかを使用せよ。（複数選択可）
 
-以下のうち適切なラベルを追加せよ。（複数可）
+## Pull Request Conventions
 
-- build: ビルド関係
-- ci: CI関係
-- docs: ドキュメント関係
-- feat: 新機能または機能リクエスト
-- bug: バグ報告
-- perf: 性能関係
-- refactor: リファクタリング関係
-- test: テスト関係
+- **ブランチ（head）:**
+  - 通常の場合: `<type>/<summary>`（例: `fix/coordinate-calculation`）
+  - Issue 関連の場合: `issues/<issue number>-<type>-<summary>`（例: `issues/3-fix-coordinate-calculation`）
+  - 40文字以内、すべて小文字
+- **タイトル（title）:** `<type>: <short summary>`の形式で記述せよ。
+- **本文（body）:**
+  原則として、本文は省略しないこと。
+  以下の形式で、必要な項目のみ記述せよ。Issueをクローズする場合は、`関連 Issue`に`close #1`の形式で記述せよ。
 
-## コミットメッセージ規約
+  ```markdown
+  ## 内容
 
-以下の構成に従うこと。また、過去のコミットメッセージも参考にせよ。
+  ### 変更理由
 
-### 形式
+  ### 実装内容
 
-```
-<type>: <short summary>
+  ### 影響範囲
 
-[optional body]
-```
+  ### 検証内容
 
-### type
+  ## 関連 Issue
+  ```
 
-- build: ビルドシステムまたは外部依存関係の変更（uv, PyInstaller, FFmpeg ビルド等）
-- ci: CI 設定の変更（GitHub Actions 等）
-- docs: ドキュメントのみの変更
-- feat: 新機能の追加
-- fix: バグ修正
-- perf: パフォーマンスを向上させる変更
-- refactor: 機能追加もバグ修正も行わないコード変更
-- test: テストの追加または既存テストの修正
-
-### short summary
-
-日本語または英語で変更内容を簡潔に記述し、最後にピリオドや句点を付けないこと。
-
-### optional body
-
-short summary で意味が伝わる場合は、本文は省略せよ。
-
-## プルリクエスト規約
-
-PR は以下の構成で作成せよ。
-
-### ブランチ名
-
-- Issue に関連する変更の場合: `issues/<issue number>-<type>-<summary>`（例: `issues/3-fix-coordinate-calculation`）
-- それ以外の場合: `<type>/<summary>`（例: `fix/coordinate-calculation`）
-- すべて小文字
-- 40文字以内
-
-### タイトル
-
-コミットメッセージ規約に準拠
-
-### 説明
-
-以下の形式で簡潔に記述せよ。
-
-```markdown
-## 内容
-
-### 変更理由
-
-### 実装内容
-
-### 影響範囲
-
-### 検証内容
-
-## 関連 Issue
-```
-
-- 最低限`内容`の項目のみ記述すれば良い。冗長さを排除し、不要な項目の記述は省略せよ。
-- 関連 Issue でクローズ可能なことが明白な場合は、`close #1`のように記述せよ。
-
-### ラベル
-
-以下のうち適切なラベルを追加せよ。
-
-- build
-- ci
-- docs
-- feat
-- fix
-- perf
-- refactor
-- test
+- **ラベル（label）:** タイトルの`type`と同じ英単語をラベルとして使用せよ。
+- **type**: ブランチ名およびタイトルの`type`には、**build, ci, docs, feat, fix, perf, refactor, test**のいずれかを使用せよ。

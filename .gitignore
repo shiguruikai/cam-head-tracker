@@ -2,6 +2,9 @@
 .idea/
 *.iml
 
+# Gemini CLI
+.gemini/tmp/
+
 # Python
 __pycache__/
 .venv/
@@ -9,10 +12,8 @@ venv/
 build/
 dist/
 
-# Build
-*.build/
-*.dist/
-*.onefile-build/
+# Ruff
+.ruff_cache/
 
 # Config
-/config.ini
+config.ini
