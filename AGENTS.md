@@ -115,6 +115,7 @@ uv run pyinstaller -y --clean build.spec
   - 40文字以内、すべて小文字
 - **タイトル（title）:** `<type>: <short summary>`の形式で記述せよ。
 - **本文（body）:**
+  原則として、本文は省略しないこと。
   以下の形式で、必要な項目のみ記述せよ。Issueをクローズする場合は、`関連 Issue`に`close #1`の形式で記述せよ。
 
   ```markdown
