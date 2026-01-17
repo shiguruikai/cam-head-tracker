@@ -1,43 +1,62 @@
 # CamHeadTracker
 
-Web カメラを使用して頭の動き（6DoF: X, Y, Z, Yaw, Pitch, Roll）をトラッキングし、姿勢データを opentrack に連携するためのアプリ。
+Webカメラを使用して、頭部の動きを6DoF（X, Y, Z, Yaw, Pitch, Roll）でトラッキングし、そのデータをUDP経由で[opentrack](https://github.com/opentrack/opentrack)へ送信するアプリケーションです。
 
 <img src="docs/app.jpg" width="600" alt="application screenshot">
 
 ## 特徴
 
-- **ヘッドトラッキング:** オフラインで高精度な姿勢推定ができる MediaPipe Face landmark detection を使用。
-- **キャリブレーション機能:** 水平移動したときの姿勢データのサンプルをもとに、カメラの設置位置（高さ、角度）を算出して補正する。
-- **UDP 送信:** 姿勢データを UDP で送信。[opentrack](https://github.com/opentrack/opentrack) の入力として使用可能。
+- **高精度ヘッドトラッキング:** オフラインで動作する MediaPipe Face Landmark Detection を使用。
+- **キャリブレーション機能:** カメラの設置位置（角度と高さ）を、数秒の前後移動で算出します。
+- **UDP送信:** opentrack の入力として使用可能。
+- **シンプル設計:** Pythonで簡素なGUI、FFmpegでカメラ入力、MediaPipeで姿勢推定を実装。意外と低遅延・低負荷で動作する。
 
 ## 動作環境
 
-- Windows OS
-- Web カメラ<br>
-  ※代わりに、USB Web カメラとして使用できる機能を備えた Android 14 以降のスマートフォンでも利用可能。<br>
-  ※映像に乱れや遅延が発生したときは、USB 3.0 以上の規格に対応した高速なケーブルを使用すること。
+- **OS:** Windows 10 / 11 (64bit)
+- **Webカメラ:** 640x360以上、30FPS以上を推奨
 
-## 使用方法
+> [!TIP]
+>
+> - Android 14以降のスマートフォンを持っている場合は、標準機能でスマートフォンをWebカメラにできます。
+> - 遅延を防ぐため、USB 3.0以上での接続を推奨します。
 
-1. [Releases](https://github.com/shiguruikai/cam-head-tracker/releases) から最新の`CamHeadTracker_vX.X.X.zip`をダウンロードし、任意の場所に展開します。
-2. Web カメラをモニターの上部または下部に設置します。
-3. \[Camera Device\] で使用する Web カメラを選択します。
-4. \[Distance Scale\] のスライダーを動かして、推定された X および Z の距離が実際の距離と近くなるように調整します。
-5. \[Calibration\] ボタンをクリックしてキャリブレーションを開始します。<br>
-   キャリブレーション中は、モニターの正面（垂直の中心線）を向き、頭を水平に保ちながら前方または後方へゆっくり移動します。<br>
-   水平移動時のデータが一定数収集されるとキャリブレーションが完了します。<br>
-   キャリブレーション後、推定された Y および Pitch の誤差が小さければキャリブレーションは成功です。
-6. プレビュー映像が不要な場合、\[Enable Preview\] のチェックを外してください。CPU 負荷が減ります。
+## 使い方
 
-#### opentrack との連携方法
+1. **ダウンロード:** [Releases](https://github.com/shiguruikai/cam-head-tracker/releases)から最新の`CamHeadTracker-vX.X.X.zip`をダウンロードし、展開します。
+2. **起動:** `CamHeadTracker.exe`を実行します。
+3. **カメラ選択:** [Camera Device]で使用するカメラと解像度を選択します。
+4. **opentrackの設定:**
+   1. opentrackを起動し、[Input]で`UDP over network`を選択します。
+   2. 右横の🔨ボタンをクリックし、Portの番号を確認します。（デフォルト: `4242`）
+   3. CamHeadTracker側のPortに同じ番号を入力し、[Apply]ボタンをクリックします。
 
-1. opentrack を起動し、\[Input\] で UDP over network を選択します。
-2. 右隣の設定ボタンをクリックすると、opentrack のポート番号（デフォルト: 4242）が表示されます。
-3. CamHeadTracker の \[Port\] に opentrack のポート番号を入力し、\[Apply\] ボタンをクリックします。
+> [!NOTE]
+>
+> - Microsoft Flight Simulator 2024で使用する場合は、opentrackの[Output]で`freetrack 2.0 Enhanced`を選択します。
 
-## 開発環境の構築とビルド方法
+#### キャリブレーション手順
 
-パッケージマネージャーの [uv](https://github.com/astral-sh/uv) を使用します。
+精度を最大限に引き出すために、以下の手順でキャリブレーションを行ってください。
+
+1. **距離の調整:** [Distance Scale]をスライダーで調整し、画面上の`Z`の値が、実際のカメラから顔までの距離（cm）とだいたい一致するようにします。
+2. **計測開始:** [Start Calibration]ボタンをクリックします。
+3. **水平に動く:** モニターの正面を向いたまま、ゆっくりと前方または後方へ移動（15cm〜30cm程度）します。
+   - この時、首を動かすのではなく、体ごと水平に移動してください。
+4. **完了:** プログレスバーがいっぱいになるとカメラの角度と高さが自動で計算され、`Y`, `Z`, `Pitch`の値が補正されます。
+
+## トラブルシューティング
+
+- **FPSが低い:** カメラの解像度を下げてみてください。
+- **CPU負荷が高い:** [Enable Preview]のチェックを外すとプレビューが非表示になり、CPU負荷が若干低下します。
+- **動きが逆になる:** opentrack側の[Options] -> [Output]タブで、各軸Invert（反転）設定を行ってください。
+- **感度が高い:** opentrack側の[Filter]で感度を調整してください。
+
+## 開発者向け情報
+
+### ビルド手順
+
+パッケージマネージャーの[uv](https://github.com/astral-sh/uv)を使用します。
 
 1. **リポジトリのクローン**
 
@@ -68,20 +87,20 @@ Web カメラを使用して頭の動き（6DoF: X, Y, Z, Yaw, Pitch, Roll）を
 
 ### MediaPipe モデルの更新
 
-[Face landmark detection guide | Google AI Edge](https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker) から最新の`face_landmarker.task`をダウンロードし、`cam-head-tracker/assets/face_landmarker.task`に配置します。
+[Face landmark detection guide | Google AI Edge](https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker)から最新の`face_landmarker.task`をダウンロードし、`cam-head-tracker/assets/face_landmarker.task`に配置します。
 
 ### `ffmpeg.exe`の更新
 
-本アプリは、Web カメラの情報および映像取得に`ffmpeg.exe`を使用しており、必要最小限の機能のみを有効化したカスタムビルド版を同梱しています。
+本アプリは、Webカメラの情報および映像取得に`ffmpeg.exe`を使用しており、必要最小限の機能のみを有効化したカスタムビルド版を同梱しています。
 
 **自動更新**
 
-GitHub Actions のワークフローで FFmpeg の最新安定版を定期的にチェックします。新しいバージョンがリリースされている場合、自動でビルドしてプルリクエストを作成します。
+GitHub ActionsのワークフローでFFmpegの最新安定版を定期的にチェックします。新しいバージョンがリリースされている場合、自動でビルドしてプルリクエストを作成します。
 
 **手動更新**
 
 1. Docker を実行できる環境に`ffmpeg-builder`ディレクトリを配置します。
-2. ビルド対象のバージョン（FFmpeg のリポジトリにおけるタグまたはブランチ名）を`ffmpeg-builder/version`に記載します。
+2. ビルド対象のバージョン（FFmpeg のリポジトリにおけるタグまたはブランチ名）を`ffmpeg-builder/version`に記述します。
 3. スクリプトを実行してビルドします。
    ```sh
    cd ffmpeg-builder
@@ -93,8 +112,8 @@ GitHub Actions のワークフローで FFmpeg の最新安定版を定期的に
 ## バグ報告と貢献
 
 個人使用の目的で公開したのですが、興味を持っていただきありがとうございます。<br>
-個人開発のため、PR 等は対応にお時間をいただく場合があります。<br>
-バグ報告やご質問等あれば Issues でご連絡ください。
+個人開発のため、PR等は対応にお時間をいただく場合があります。<br>
+バグ報告やご質問等あればIssuesでご連絡ください。
 
 ## ライセンス
 
