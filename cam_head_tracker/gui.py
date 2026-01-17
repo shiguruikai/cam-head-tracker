@@ -209,9 +209,8 @@ class CamHeadTrackerApp(tk.Frame):
         self.scale_lbl.pack()
 
         # 距離スケールスライダー
-        self.distance_scale_var = tk.DoubleVar()
+        self.distance_scale_var = tk.DoubleVar(value=DEFAULT_DISTANCE_SCALE)
         self.distance_scale_var.trace("w", self.onchange_distance_scale)
-        self.distance_scale_var.set(DEFAULT_DISTANCE_SCALE)
         self.distance_scale = ttk.Scale(
             cal_labelframe, from_=0.5, to=3.0, orient="horizontal", variable=self.distance_scale_var
         )
@@ -369,12 +368,13 @@ class CamHeadTrackerApp(tk.Frame):
                         self.cam_option_cbx.set(cam_option)
 
             if "Calibration" in config:
+                if "distance_scale" in config["Calibration"]:
+                    self.corrector.set_distance_scale(config["Calibration"].getfloat("distance_scale"))
+
                 if "is_calibrated" in config["Calibration"]:
                     self.corrector.set_calibrated(config["Calibration"].getboolean("is_calibrated"))
 
                 if self.corrector.is_calibrated():
-                    if "distance_scale" in config["Calibration"]:
-                        self.corrector.set_distance_scale(config["Calibration"].getfloat("distance_scale"))
                     if "cam_angle" in config["Calibration"]:
                         self.corrector.set_cam_angle(config["Calibration"].getfloat("cam_angle"))
                     if "cam_height" in config["Calibration"]:
