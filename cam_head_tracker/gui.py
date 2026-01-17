@@ -117,10 +117,11 @@ class TkUIExecutor:
 
 
 class CamHeadTrackerApp(tk.Frame):
-    def __init__(self, root: tk.Tk, config_path: Path, *args, **kwargs):
+    def __init__(self, root: tk.Tk, config_paths: list[Path], *args, **kwargs):
         super().__init__(root, *args, **kwargs)
 
-        self.config_path = config_path
+        self.config_paths = config_paths
+        self.config_path = config_paths[-1]
 
         self.is_calibrating = False
         self.should_preview = True
@@ -310,17 +311,49 @@ class CamHeadTrackerApp(tk.Frame):
             "preview_text_color": self.preview_text_color,
         }
 
-        try:
-            with self.config_path.open("w", encoding="utf-8") as f:
-                config.write(f)
-        except Exception:
-            logger.exception("Failed to save config.ini")
-            messagebox.showerror("Error", "Failed to save config.ini")
+        def save_config_file(path: Path) -> bool:
+            try:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                with path.open("w", encoding="utf-8") as f:
+                    config.write(f)
+            except Exception as e:
+                logger.debug("Failed to save config to %s", path, exc_info=e)
+                return False
+            else:
+                logger.debug("Saved config to %s", path)
+                return True
+
+        # 読み込んだ設定ファイルに保存
+        if save_config_file(self.config_path):
+            return
+
+        # 保存できなかった場合、別のパスに保存してよいか1度だけ尋ねて保存
+        other_path = next((p for p in self.config_paths if p != self.config_path))
+        if messagebox.askyesno(
+            "Save config file",
+            f"Unable to write config.ini to folder where exe is located.\nSave to {other_path.parent} instead?",
+        ):
+            if save_config_file(other_path):
+                self.config_path = other_path
+            else:
+                messagebox.showerror("Error", "Failed to save config.ini")
 
     def load_config(self):
         try:
             config = configparser.ConfigParser()
-            config.read(self.config_path, encoding="utf-8")
+
+            for path in self.config_paths:
+                if not path.exists():
+                    continue
+
+                config.read(path, encoding="utf-8")
+                logger.debug("Loaded config from %s", path)
+                self.config_path = path
+                break
+            else:
+                logger.debug("config.ini not found, using default settings.")
+                self.config_path = self.config_paths[-1]
+                return
 
             if "Camera" in config:
                 if "enable_preview" in config["Camera"]:
@@ -366,8 +399,9 @@ class CamHeadTrackerApp(tk.Frame):
                     self.preview_canvas.itemconfigure("fps_text", fill=self.preview_text_color)
                     self.preview_canvas.itemconfigure("pose_text", fill=self.preview_text_color)
         except Exception:
-            logging.exception("Failed to load config.ini")
-            messagebox.showerror("Error", "Failed to load config.ini")
+            error_msg = f"Failed to load config from {self.config_path}"
+            logging.exception(error_msg)
+            messagebox.showerror("Error", error_msg)
 
     def track_loop(self):
         try:
