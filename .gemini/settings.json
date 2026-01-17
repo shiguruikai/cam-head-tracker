@@ -4,9 +4,10 @@
     },
     "context": {
         "fileName": [
-            "AGENTS.md",
-            "README.md",
-            "pyproject.toml"
+            "AGENTS.md"
         ]
+    },
+    "tools": {
+        "autoAccept": true
     }
 }
