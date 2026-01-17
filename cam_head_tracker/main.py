@@ -1,6 +1,7 @@
 import argparse
 import ctypes
 import logging
+import os
 import platform
 import sys
 import tkinter as tk
@@ -12,7 +13,27 @@ from cam_head_tracker.gui import CamHeadTrackerApp
 
 logger = logging.getLogger(__name__)
 
-CONFIG_FILE_PATH = Path(__file__).parent.parent / "config.ini"
+
+def get_config_paths() -> list[Path]:
+    """設定ファイルが存在する可能性のあるパスのリストを読み込む優先順で返す。"""
+    paths = []
+
+    # 1. C:\Users\ユーザー名\AppData\Roaming\CamHeadTracker\config.ini
+    appdata = os.getenv("APPDATA")
+    if appdata:
+        paths.append(Path(appdata) / "CamHeadTracker" / "config.ini")
+
+    # 2. ~/.config/CamHeadTracker/config.ini
+    paths.append(Path.home() / ".config" / "CamHeadTracker" / "config.ini")
+
+    # 3. 実行ファイルと同じディレクトリ（ポータブル）
+    if getattr(sys, "frozen", False):
+        exe_path = Path(sys.executable).parent
+    else:
+        exe_path = Path(__file__).parent.parent
+    paths.append(exe_path / "config.ini")
+
+    return paths
 
 
 def handle_exception(exc, val, tb):
@@ -56,7 +77,7 @@ def main():
     root = tk.Tk()
     root.report_callback_exception = handle_exception
 
-    with CamHeadTrackerApp(root, config_path=CONFIG_FILE_PATH):
+    with CamHeadTrackerApp(root, config_paths=get_config_paths()):
         root.mainloop()
 
 
