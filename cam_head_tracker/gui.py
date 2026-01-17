@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 APP_NAME = "Head Tracker"
 ICON_FILE_PATH = Path(__file__).parent / "assets/icon.png"
 
-DEFAULT_DISTANCE_SCALE = 1.3
+DEFAULT_DISTANCE_SCALE = 1.0
 DEFAULT_UDP_HOST = "127.0.0.1"
 DEFAULT_UDP_PORT = 4242
 DEFAULT_PREVIEW_TEXT_COLOR = "#00FF00"
@@ -209,8 +209,9 @@ class CamHeadTrackerApp(tk.Frame):
         self.scale_lbl.pack()
 
         # 距離スケールスライダー
-        self.distance_scale_var = tk.DoubleVar(value=DEFAULT_DISTANCE_SCALE)
+        self.distance_scale_var = tk.DoubleVar()
         self.distance_scale_var.trace("w", self.onchange_distance_scale)
+        self.distance_scale_var.set(DEFAULT_DISTANCE_SCALE)
         self.distance_scale = ttk.Scale(
             cal_labelframe, from_=0.5, to=3.0, orient="horizontal", variable=self.distance_scale_var
         )
