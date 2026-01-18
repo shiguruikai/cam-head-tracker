@@ -10,7 +10,6 @@ from pathlib import Path
 from tkinter import messagebox
 
 from cam_head_tracker.gui import CamHeadTrackerApp
-from cam_head_tracker.tracker import MediapipeTracker
 
 logger = logging.getLogger(__name__)
 
@@ -79,9 +78,7 @@ def main():
     root = tk.Tk()
     root.report_callback_exception = handle_exception
 
-    with CamHeadTrackerApp(
-        root, config_paths=get_config_paths(), csv_output_path=args.csv_output
-    ):
+    with CamHeadTrackerApp(root, config_paths=get_config_paths(), csv_output_path=args.csv_output):
         root.mainloop()
 
 
