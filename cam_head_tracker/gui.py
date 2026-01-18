@@ -1,5 +1,4 @@
 import configparser
-import itertools
 import logging
 import queue
 import socket
@@ -11,16 +10,16 @@ from pathlib import Path
 from tkinter import messagebox, ttk
 from typing import Any, Callable, Hashable, ParamSpec
 
-import mediapipe as mp
 import numpy as np
 from PIL import Image, ImageDraw, ImageTk
 
 from cam_head_tracker.camera import CameraDeviceOption, VideoCapture, get_camera_device_names, get_camera_device_options
 from cam_head_tracker.frame_rate_counter import FrameRateCounter
-from cam_head_tracker.tracker import PoseCorrector, create_face_landmarker, mp_matrix_to_pose
-from cam_head_tracker.udp_client import UDPClient
+from cam_head_tracker.pose_writer import CsvPoseWriter, UDPPoseWriter
+from cam_head_tracker.tracker import MediapipeTracker, Pose, PoseCorrector
 
 logger = logging.getLogger(__name__)
+
 
 APP_NAME = "Head Tracker"
 ICON_FILE_PATH = Path(__file__).parent / "assets/icon.png"
@@ -32,14 +31,6 @@ DEFAULT_PREVIEW_TEXT_COLOR = "#00FF00"
 
 # キャリブレーションに必要なサンプルデータ数
 N_CALIBRATION_SAMPLES = 30
-
-# プレビューで描画する顔面の線
-PREVIEW_FACE_LANDMARKS_CONNECTIONS = mp.tasks.vision.FaceLandmarksConnections.FACE_LANDMARKS_FACE_OVAL + [
-    mp.tasks.vision.FaceLandmarksConnections.Connection(a, b)
-    for a, b in itertools.pairwise(
-        [10, 151, 9, 8, 168, 6, 197, 195, 5, 4, 1, 19, 94, 2, 164, 0, 17, 18, 200, 199, 175, 152]
-    )
-]
 
 X, Y, Z, YAW, PITCH, ROLL = 0, 1, 2, 3, 4, 5
 
@@ -117,8 +108,8 @@ class TkUIExecutor:
 
 
 class CamHeadTrackerApp(tk.Frame):
-    def __init__(self, root: tk.Tk, config_paths: list[Path], *args, **kwargs):
-        super().__init__(root, *args, **kwargs)
+    def __init__(self, root: tk.Tk, *, config_paths: list[Path], csv_output_path: Path | None = None, **kwargs):
+        super().__init__(root, **kwargs)
 
         self.config_paths = config_paths
         self.config_path = config_paths[-1]
@@ -131,9 +122,11 @@ class CamHeadTrackerApp(tk.Frame):
         self.cam_options: list[CameraDeviceOption] = []
         self.cap: VideoCapture | None = None
         self.track_thread: threading.Thread | None = None
-        self.udp_client: UDPClient | None = None
 
-        self.face_landmarker = create_face_landmarker()
+        self.udp_pose_writer: UDPPoseWriter | None = None
+        self.csv_pose_writer: CsvPoseWriter | None = CsvPoseWriter(path=csv_output_path) if csv_output_path else None
+
+        self.tracker = MediapipeTracker()
         self.corrector = PoseCorrector()
         self.fps_counter = FrameRateCounter()
         self.ui_executor = TkUIExecutor(root)
@@ -274,9 +267,11 @@ class CamHeadTrackerApp(tk.Frame):
             self.cap.close()
         if self.track_thread:
             self.track_thread.join()
-        if self.udp_client:
-            self.udp_client.close()
-        self.face_landmarker.close()
+        if self.udp_pose_writer:
+            self.udp_pose_writer.close()
+        if self.csv_pose_writer:
+            self.csv_pose_writer.close()
+        self.tracker.close()
         self.ui_executor.shutdown()
 
     def on_close(self):
@@ -407,7 +402,7 @@ class CamHeadTrackerApp(tk.Frame):
     def track_loop(self):
         try:
             for frame in self.cap.frames():
-                self.track_loop_inner(frame)
+                self.track_loop_inner(frame, int(time.perf_counter() * 1000))
         except Exception as e:
             logger.exception("track loop unexpected error")
 
@@ -420,19 +415,16 @@ class CamHeadTrackerApp(tk.Frame):
             self.ui_executor.schedule("hide_preview_canvas", self.hide_preview_canvas)
             self.ui_executor.schedule("cam_option_var.set", self.cam_option_var.set, "")
 
-    def track_loop_inner(self, frame):
+    def track_loop_inner(self, frame: np.ndarray, timestamp_ms: int):
         self.fps_counter.update()
 
         # 顔ランドマーク検出
-        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame)
-        timestamp_ms = int(time.perf_counter() * 1000)
-        landmarker_result = self.face_landmarker.detect_for_video(mp_image, timestamp_ms)
-
-        pose: np.ndarray | None = None
+        tracker_result = self.tracker.estimate(frame, timestamp_ms)
+        pose: Pose | None = None
 
         # 顔ランドマークが検出できた場合の処理
-        if landmarker_result.facial_transformation_matrixes:
-            raw_pose = mp_matrix_to_pose(landmarker_result.facial_transformation_matrixes[0])
+        if tracker_result:
+            raw_pose = tracker_result.pose
 
             # キャリブレーション中の場合
             if self.is_calibrating:
@@ -452,9 +444,12 @@ class CamHeadTrackerApp(tk.Frame):
             pose = self.corrector.correct(raw_pose)
 
             # データをUDP送信
-            udp_client = self.udp_client
-            if udp_client:
-                udp_client.send(pose)
+            if self.udp_pose_writer:
+                self.udp_pose_writer.write(pose)
+
+            # データをCSV出力
+            if self.csv_pose_writer:
+                self.csv_pose_writer.write(pose)
 
         # プレビューの更新処理
         if self.should_preview and self.preview_canvas_height > 1:
@@ -468,18 +463,10 @@ class CamHeadTrackerApp(tk.Frame):
             preview_width, preview_height = preview_pil_image.size
 
             # 顔ランドマークが検出できた場合、検出した顔の輪郭を描画する。
-            if landmarker_result.face_landmarks:
-                landmarks = landmarker_result.face_landmarks[0]
-                draw = ImageDraw.Draw(preview_pil_image)
-
-                points = []
-                for conn in PREVIEW_FACE_LANDMARKS_CONNECTIONS:
-                    for i in (conn.start, conn.end):
-                        landmark = landmarks[i]
-                        x = round(landmark.x * preview_width)
-                        y = round(landmark.y * preview_height)
-                        points.append((x, y))
-                draw.line(points, fill=(0, 255, 0), width=2)
+            if tracker_result and tracker_result.landmarks:
+                points = [(round(x * preview_width), round(y * preview_height)) for x, y in tracker_result.landmarks]
+                image_draw = ImageDraw.Draw(preview_pil_image)
+                image_draw.line(points, fill=(0, 255, 0), width=2)
 
             # プレビューの更新
             self.ui_executor.schedule("update_preview_canvas", self.update_preview_canvas, preview_pil_image, pose)
@@ -567,9 +554,8 @@ Offset Pitch   --.- °
         self.update_calibration_ui()
 
     def setup_udp_client(self):
-        if self.udp_client:
-            self.udp_client.close()
-            self.udp_client = None
+        if self.udp_pose_writer:
+            self.udp_pose_writer.close()
 
         host = self.udp_host_var.get().strip()
 
@@ -580,14 +566,13 @@ Offset Pitch   --.- °
             port = self.udp_port_var.get()
         except tk.TclError as e:
             logger.debug("Invalid UDP Port: %s", e)
-            messagebox.showerror("Error", "Invalid UDP Client Port")
+            messagebox.showerror("Error", "Invalid Port")
             return
 
         try:
-            self.udp_client = UDPClient(host, port)
-        except socket.gaierror as e:
-            logger.debug("Failed to create UDPClient: host=%s, port=%s, error=%s", host, port, e)
-            messagebox.showerror("Error", "Invalid UDP Client Host / IP")
+            self.udp_pose_writer = UDPPoseWriter(host=host, port=port)
+        except socket.gaierror:
+            messagebox.showerror("Error", "Invalid Host / IP")
 
     def onresize_preview_canvas(self, _):
         height = self.preview_canvas.winfo_height()

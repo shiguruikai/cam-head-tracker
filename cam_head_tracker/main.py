@@ -60,6 +60,7 @@ def enable_dpi_awareness():
 def main():
     parser = argparse.ArgumentParser(prog=Path(__file__).name, description="CamHeadTracker")
     parser.add_argument("--verbose", help="enable verbose output", action="store_true")
+    parser.add_argument("--csv-output", help="path to csv output file", type=Path)
     args = parser.parse_args()
 
     log_level = logging.DEBUG if args.verbose else logging.INFO
@@ -77,7 +78,7 @@ def main():
     root = tk.Tk()
     root.report_callback_exception = handle_exception
 
-    with CamHeadTrackerApp(root, config_paths=get_config_paths()):
+    with CamHeadTrackerApp(root, config_paths=get_config_paths(), csv_output_path=args.csv_output):
         root.mainloop()
 
 
