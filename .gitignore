@@ -1,9 +1,9 @@
+# env
+.env
+
 # Intellij IDEA
 .idea/
 *.iml
-
-# Gemini CLI
-.gemini/tmp/
 
 # Python
 __pycache__/
@@ -17,3 +17,6 @@ dist/
 
 # Config
 config.ini
+
+# Repomix
+repomix-output.md
