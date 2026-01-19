@@ -293,10 +293,16 @@ class CamHeadTrackerApp(tk.Frame):
         }
         config["Calibration"] = {
             "is_calibrated": str(self.corrector.is_calibrated()),
-            "distance_scale": self.corrector.get_distance_scale(),
-            "cam_angle": self.corrector.get_cam_angle(),
-            "cam_height": self.corrector.get_cam_height(),
-            "offset_pitch": self.corrector.get_offset_pitch(),
+            "distance_scale": f"{self.corrector.get_distance_scale():.6f}",
+            "cam_x": f"{self.corrector.get_cam_x():.6f}",
+            "cam_y": f"{self.corrector.get_cam_y():.6f}",
+            "cam_z": f"{self.corrector.get_cam_z():.6f}",
+            "cam_yaw": f"{self.corrector.get_cam_yaw():.6f}",
+            "cam_pitch": f"{self.corrector.get_cam_pitch():.6f}",
+            "cam_roll": f"{self.corrector.get_cam_roll():.6f}",
+            "offset_yaw": f"{self.corrector.get_offset_yaw():.6f}",
+            "offset_pitch": f"{self.corrector.get_offset_pitch():.6f}",
+            "offset_roll": f"{self.corrector.get_offset_roll():.6f}",
         }
         config["UDPClient"] = {
             "host": self.udp_host_var.get().strip(),
@@ -367,16 +373,23 @@ class CamHeadTrackerApp(tk.Frame):
                 if "distance_scale" in config["Calibration"]:
                     self.corrector.set_distance_scale(config["Calibration"].getfloat("distance_scale"))
 
-                if "is_calibrated" in config["Calibration"]:
-                    self.corrector.set_calibrated(config["Calibration"].getboolean("is_calibrated"))
-
-                if self.corrector.is_calibrated():
-                    if "cam_angle" in config["Calibration"]:
-                        self.corrector.set_cam_angle(config["Calibration"].getfloat("cam_angle"))
-                    if "cam_height" in config["Calibration"]:
-                        self.corrector.set_cam_height(config["Calibration"].getfloat("cam_height"))
-                    if "offset_pitch" in config["Calibration"]:
-                        self.corrector.set_offset_pitch(config["Calibration"].getfloat("offset_pitch"))
+                is_calibrated = config["Calibration"].getboolean("is_calibrated", False)
+                if is_calibrated:
+                    self.corrector.set_calibrated_data(
+                        cam_pose=(
+                            config["Calibration"].getfloat("cam_x", 0.0),
+                            config["Calibration"].getfloat("cam_y", 0.0),
+                            config["Calibration"].getfloat("cam_z", 0.0),
+                            config["Calibration"].getfloat("cam_yaw", 0.0),
+                            config["Calibration"].getfloat("cam_pitch", 0.0),
+                            config["Calibration"].getfloat("cam_roll", 0.0),
+                        ),
+                        offset_angle=(
+                            config["Calibration"].getfloat("offset_yaw", 0.0),
+                            config["Calibration"].getfloat("offset_pitch", 0.0),
+                            config["Calibration"].getfloat("offset_roll", 0.0),
+                        ),
+                    )
 
                 self.update_calibration_ui()
 
@@ -515,18 +528,28 @@ class CamHeadTrackerApp(tk.Frame):
 
             self.cal_result_lbl_var.set(
                 f"""
-Camera Angle  {self.corrector.get_cam_angle():>5.1f} °
-Camera Height {self.corrector.get_cam_height():>5.1f} cm
+Camera X      {self.corrector.get_cam_x():>5.1f} cm
+Camera Y      {self.corrector.get_cam_y():>5.1f} cm
+Camera Yaw    {self.corrector.get_cam_yaw():>5.1f} °
+Camera Pitch  {self.corrector.get_cam_pitch():>5.1f} °
+Camera Roll   {self.corrector.get_cam_roll():>5.1f} °
+Offset Yaw    {self.corrector.get_offset_yaw():>5.1f} °
 Offset Pitch  {self.corrector.get_offset_pitch():>5.1f} °
+Offset Roll   {self.corrector.get_offset_roll():>5.1f} °
 """.strip()
             )
         else:
             self.cal_pbar_var.set(0)
             self.cal_result_lbl_var.set(
                 """
-Camera Angle   --.-°
-Camera Height  --.- cm
+Camera X       --.- cm
+Camera Y       --.- cm
+Camera Yaw     --.- °
+Camera Pitch   --.- °
+Camera Roll    --.- °
+Offset Yaw     --.- °
 Offset Pitch   --.- °
+Offset Roll    --.- °
 """.strip()
             )
 
