@@ -104,7 +104,7 @@ uv run pyinstaller -y --clean build.spec
     - `perf`: パフォーマンスを向上させる変更
     - `refactor`: 機能追加もバグ修正も行わないコード変更
     - `test`: テストの追加または既存テストの修正
-- `short summary`には、日本語または英語で簡潔に記述し、末尾にピリオドや句点を付けないこと。
+- `short summary`は、日本語で簡潔に概要を記述し、末尾に句点を付けないこと。
 - `optional body`は、冗長さを排除し、どうしても説明が必要な場合にのみ記述せよ。
 
 ## Issue Conventions
@@ -136,7 +136,7 @@ uv run pyinstaller -y --clean build.spec
     <!-- テスト方法、テスト結果 -->
 
     ## 関連Issue
-    <!-- 関連するIssue、クローズする場合は close #1 の形式 -->
+    <!-- 関連するIssue ※クローズする場合は close #1 の形式 -->
     ```
 
 - **ラベル（label）:** タイトルの`type`と同じ英単語をラベルとして使用せよ。
