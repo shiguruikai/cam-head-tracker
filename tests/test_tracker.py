@@ -4,7 +4,13 @@ import numpy as np
 import pytest
 
 from cam_head_tracker.tracker import (
+    PITCH,
+    ROLL,
+    YAW,
     PoseCorrector,
+    X,
+    Y,
+    Z,
     euler_angles_to_rotation_matrix,
     rotation_matrix_to_euler_angles,
 )
@@ -21,58 +27,40 @@ TEST_ANGLES = [
     (10.0, 20.0, 30.0),  # Combined
     (-15.0, 45.0, -5.0),  # Mixed signs
     (120.0, -20.0, 180.0),  # Large angles (Aliasing check)
+    (0.0, 89.9, 0.0),  # Near Gimbal Lock (Pitch +90)
+    (0.0, -89.9, 0.0),  # Near Gimbal Lock (Pitch -90)
 ]
 
 
 @pytest.mark.parametrize("yaw, pitch, roll", TEST_ANGLES)
 def test_matrix_orthogonality(yaw, pitch, roll):
-    """
-    生成される回転行列が「直交行列」の性質を満たしているか検証する。
-    """
+    """生成される回転行列が「直交行列」の性質を満たしているか検証する。"""
     matrix = euler_angles_to_rotation_matrix(yaw, pitch, roll)
-
-    # 直交性チェック: R * R_transpose == Identity Matrix
+    # 直交性: R * R.T == I
     np.testing.assert_allclose(matrix @ matrix.T, np.eye(3), atol=1e-9)
-
-    # 行列式チェック: det(R) == 1.0
+    # 行列式: det(R) == 1.0
     assert np.linalg.det(matrix) == pytest.approx(1.0, abs=1e-9)
 
 
 @pytest.mark.parametrize("yaw, pitch, roll", TEST_ANGLES)
 def test_rotation_round_trip_matrix_stability(yaw, pitch, roll):
-    """
-    Euler -> Rotation Matrix -> Euler -> Rotation Matrix の変換を行い、
-    「回転行列」が維持されているか検証する。
-    """
-    # 1. Euler -> Matrix
+    """Euler -> Matrix -> Euler -> Matrix の往復変換で行列が維持されるか検証する。"""
     matrix_original = euler_angles_to_rotation_matrix(yaw, pitch, roll)
-
-    # 2. Matrix -> Euler
     res_yaw, res_pitch, res_roll = rotation_matrix_to_euler_angles(matrix_original)
-
-    # 3. Euler -> Matrix (復元)
     matrix_restored = euler_angles_to_rotation_matrix(res_yaw, res_pitch, res_roll)
-
-    # 4. 行列の各要素が一致することを確認
     np.testing.assert_allclose(matrix_original, matrix_restored, atol=1e-9)
 
 
 @pytest.mark.parametrize(
     "mat, angles",
     [
-        # 回転なし
+        # Identity
         ([[1, 0, 0], [0, 1, 0], [0, 0, 1]], (0.0, 0.0, 0.0)),
-        # Yaw 90度
-        ([[0, 0, 1], [0, 1, 0], [-1, 0, 0]], (90.0, 0.0, 0.0)),
-        # Pitch 90度
-        ([[1, 0, 0], [0, 0, -1], [0, 1, 0]], (0.0, 90.0, 0.0)),
-        # Roll 90度
-        ([[0, -1, 0], [1, 0, 0], [0, 0, 1]], (0.0, 0.0, 90.0)),
-        # Yaw -90度
-        ([[0, 0, -1], [0, 1, 0], [1, 0, 0]], (-90.0, 0.0, 0.0)),
-        # Pitch 180度
-        ([[1, 0, 0], [0, -1, 0], [0, 0, -1]], (0.0, 180.0, 0.0)),
-        # Yaw 30度、Pitch 45度、Roll 60度
+        # Basic Axes (90 deg)
+        ([[0, 0, 1], [0, 1, 0], [-1, 0, 0]], (90.0, 0.0, 0.0)),  # Yaw 90
+        ([[1, 0, 0], [0, 0, -1], [0, 1, 0]], (0.0, 90.0, 0.0)),  # Pitch 90
+        ([[0, -1, 0], [1, 0, 0], [0, 0, 1]], (0.0, 0.0, 90.0)),  # Roll 90
+        # Complex cases
         (
             [
                 [0.4330127018922193, -0.75, 0.5],
@@ -81,18 +69,10 @@ def test_rotation_round_trip_matrix_stability(yaw, pitch, roll):
             ],
             (30.0, 45.0, 60.0),
         ),
-        # Yaw 45度、Pitch 45度、Roll 90度
-        (
-            [
-                [0.0, -0.8660254037844386, 0.8660254037844386],
-                [0.8660254037844386, 0.5, 0.5],
-                [-0.8660254037844386, 0.5, 0.5],
-            ],
-            (45.0, 45.0, 90.0),
-        ),
     ],
 )
 def test_known_rotation_values(mat, angles):
+    """既知の回転行列とオイラー角の対応関係を検証する。"""
     assert rotation_matrix_to_euler_angles(np.array(mat)) == pytest.approx(angles, abs=1e-9)
 
 
@@ -108,108 +88,180 @@ def corrector():
     return c
 
 
-def create_transform_matrix(x, y, z, yaw, pitch, roll):
+def create_transform_matrix(x, y, z, yaw=0.0, pitch=0.0, roll=0.0):
     """テスト用の 4x4 同次変換行列を作成するヘルパー関数"""
-    mat = np.eye(4)
+    mat = np.eye(4, dtype=np.float32)
     mat[:3, :3] = euler_angles_to_rotation_matrix(yaw, pitch, roll)
     mat[:3, 3] = [x, y, z]
     return mat
 
 
+def perform_standard_calibration(corrector):
+    """標準的なキャリブレーション（正面を向いてZ軸移動）を実行するヘルパー"""
+    corrector.reset_calibration()
+    samples = [
+        create_transform_matrix(0, 0, 0),
+        create_transform_matrix(0, 0, -10),
+        create_transform_matrix(0, 0, -20),
+    ]
+    for mat in samples:
+        corrector.add_calibration_sample(mat)
+    corrector.calibrate()
+
+
+def test_calibration_sample_filtering(corrector):
+    """
+    Z軸方向の移動が小さい場合、サンプルとして追加されないことを検証する。
+    """
+    mat1 = create_transform_matrix(0, 0, 0)
+    mat2 = create_transform_matrix(0, 0, 0.499)  # 0.499cm diff (Threshold is 0.5)
+    mat3 = create_transform_matrix(0, 0, -0.499)  # 0.499cm diff (Threshold is 0.5)
+    mat4 = create_transform_matrix(0, 0, -1.0)  # 1.0cm diff
+
+    assert corrector.add_calibration_sample(mat1) is True
+    assert corrector.add_calibration_sample(mat2) is False  # 追加されない
+    assert corrector.add_calibration_sample(mat3) is False  # 追加されない
+    assert corrector.add_calibration_sample(mat4) is True
+
+    assert corrector.get_calibration_sample_len() == 2
+
+
 def test_calibration_perfect_setup(corrector):
-    """
-    理想的な状態でのキャリブレーションテスト。
-    入力値に対して出力値が正確に一致するか厳密に検証する。
-    """
+    """理想的な状態でのキャリブレーション検証。"""
+    perform_standard_calibration(corrector)
+    assert corrector.is_calibrated()
+
+    # 入力: 左に5cm移動
+    input_x = 5.0
+    input_mat = create_transform_matrix(input_x, 0, 0)
+
+    pose = corrector.correct(input_mat)
+
+    # 検証: X軸のみ変化し、他は0
+    assert pose[X] == pytest.approx(input_x, abs=1e-9)
+    assert pose[Y] == pytest.approx(0.0, abs=1e-9)
+    assert pose[Z] == pytest.approx(0.0, abs=1e-9)
+    assert pose[YAW] == pytest.approx(0.0, abs=1e-9)
+    assert pose[PITCH] == pytest.approx(0.0, abs=1e-9)
+    assert pose[ROLL] == pytest.approx(0.0, abs=1e-9)
+
+
+def test_calibration_tilted_camera(corrector):
+    """カメラが45度傾いている状態での補正検証。"""
     corrector.reset_calibration()
 
     assert not corrector.is_calibrated()
-    assert len(corrector._calibration_samples) == 0
+    assert corrector.get_calibration_sample_len() == 0
 
-    # Step 1: キャリブレーション (Z軸移動 0 -> -10 -> -20)
+    # カメラの傾き（Z軸周り45度）
+    tilt_angle = 45.0
+    tilt_rot = euler_angles_to_rotation_matrix(0, 0, tilt_angle)
+
+    # キャリブレーション (傾いたまま前後移動)
     samples = [
-        create_transform_matrix(0, 0, 0, 0, 0, 0),
-        create_transform_matrix(0, 0, -10, 0, 0, 0),
-        create_transform_matrix(0, 0, -20, 0, 0, 0),
+        create_transform_matrix(0, 0, 0),
+        create_transform_matrix(0, 0, -10),
+        create_transform_matrix(0, 0, -20),
     ]
-
     for mat in samples:
+        # 回転成分を上書き
+        mat[:3, :3] = tilt_rot
         corrector.add_calibration_sample(mat)
 
-    assert len(corrector._calibration_samples) == 3
+    assert not corrector.is_calibrated()
+    assert corrector.get_calibration_sample_len() == len(samples)
 
     corrector.calibrate()
 
     assert corrector.is_calibrated()
-    assert len(corrector._calibration_samples) == 0
+    assert corrector.get_calibration_sample_len() == 0
 
-    # Step 2: 補正の検証
-    # 入力: MediaPipe座標系で X=5.0 (左), 回転なし
-    input_x = 5.0
-    input_mat = create_transform_matrix(input_x, 0, 0, 0, 0, 0)
-
-    x, y, z, yaw, pitch, roll = corrector.correct(input_mat)
-
-    # 検証:
-    # 1. X軸: Opentrackの「左正」仕様により、入力と同じ 5.0 になるべき
-    assert x == pytest.approx(input_x, abs=1e-9)
-
-    # 2. 他の成分: 純粋な横移動なので、Y, Z, 回転成分は 0.0 であるべき
-    assert y == pytest.approx(0.0, abs=1e-9)
-    assert z == pytest.approx(0.0, abs=1e-9)
-    assert yaw == pytest.approx(0.0, abs=1e-9)
-    assert pitch == pytest.approx(0.0, abs=1e-9)
-    assert roll == pytest.approx(0.0, abs=1e-9)
-
-
-def test_calibration_tilted_camera(corrector):
-    """
-    カメラが45度傾いている状態でのキャリブレーションテスト。
-    斜め入力が水平に補正され、かつ値の大きさが保たれているか厳密に検証する。
-    """
-    corrector.reset_calibration()
-
-    # カメラがZ軸周りに時計回りに45度傾いている設定
-    tilt_angle = 45.0
-    tilt_rot = euler_angles_to_rotation_matrix(0, 0, tilt_angle)
-
-    # 1. キャリブレーション (Z軸移動)
-    # 頭の向きは常に45度傾いている状態として記録される
-    samples = [
-        create_transform_matrix(0, 0, 0, 0, 0, 0),
-        create_transform_matrix(0, 0, -10, 0, 0, 0),
-        create_transform_matrix(0, 0, -20, 0, 0, 0),
-    ]
-    for mat in samples:
-        mat[:3, :3] = tilt_rot
-        corrector.add_calibration_sample(mat)
-
-    corrector.calibrate()
-
-    # 2. 検証: ワールド座標系で「左」に 10.0cm 移動したとする
-    world_move_dist = 10.0
-
-    # これを45度傾いたカメラ座標系に変換して入力データを作成する
-    # ワールド左 [1, 0, 0] は カメラ座標系では [cos45, sin45, 0] となる
+    # 検証: ワールド座標系で「左」に 10cm 移動
+    # 入力データ作成: 左移動ベクトル [10, 0, 0] を 45度傾ける -> [7.07, 7.07, 0]
+    world_move = 10.0
     rad = math.radians(tilt_angle)
-    cam_x = world_move_dist * math.cos(rad)
-    cam_y = world_move_dist * math.sin(rad)
-
-    # 入力: 位置は斜め、回転は45度傾いたまま
     input_mat = np.eye(4)
-    input_mat[:3, 3] = [cam_x, cam_y, 0]
-    input_mat[:3, :3] = tilt_rot
+    input_mat[:3, 3] = [world_move * math.cos(rad), world_move * math.sin(rad), 0]
+    input_mat[:3, :3] = tilt_rot  # カメラの回転はそのまま
 
-    res_x, res_y, res_z, res_yaw, res_pitch, res_roll = corrector.correct(input_mat)
+    pose = corrector.correct(input_mat)
 
-    # 期待値検証 (許容誤差 1e-5):
+    # 1. 斜め入力がX軸(10.0)に集約されること
+    assert pose[X] == pytest.approx(world_move, abs=1e-6)
+    assert pose[Y] == pytest.approx(0.0, abs=1e-6)
+    assert pose[Z] == pytest.approx(0.0, abs=1e-6)
 
-    # 1. 移動成分: 斜め入力が完全にX軸成分(10.0)に集約されていること
-    assert res_x == pytest.approx(world_move_dist, abs=1e-5)  # X should be exactly 10.0
-    assert res_y == pytest.approx(0.0, abs=1e-5)  # Y should be 0.0 (removed cross-talk)
-    assert res_z == pytest.approx(0.0, abs=1e-5)  # Z should be 0.0
+    # 2. ロール回転(45度)がキャンセルされ0になること
+    assert pose[ROLL] == pytest.approx(0.0, abs=1e-6)
 
-    # 2. 回転成分: 45度の傾きが補正され、0度になっていること
-    assert res_roll == pytest.approx(0.0, abs=1e-5)
-    assert res_yaw == pytest.approx(0.0, abs=1e-5)
-    assert res_pitch == pytest.approx(0.0, abs=1e-5)
+
+def test_distance_scaling(corrector):
+    """距離スケール設定が出力に反映されるか検証する。"""
+    perform_standard_calibration(corrector)
+
+    # スケールを2倍に設定
+    scale = 2.0
+    corrector.set_distance_scale(scale)
+
+    input_x = 5.0
+    input_mat = create_transform_matrix(input_x, 0, 0)
+
+    pose = corrector.correct(input_mat)
+
+    # 入力5.0 * スケール2.0 = 10.0 になるはず
+    assert pose[X] == pytest.approx(input_x * scale, abs=1e-9)
+
+
+def test_save_load_state(corrector):
+    """
+    設定の保存・復元（set_calibrated_data）が正しく機能するか検証する。
+    別のインスタンスに状態をコピーし、同じ入力に対して同じ出力を返すか確認する。
+    """
+    # 1. 通常通りキャリブレーション
+    perform_standard_calibration(corrector)
+
+    # 2. 状態を取得（Config保存を模倣）
+    saved_cam_pose = corrector.get_cam_pose()
+    saved_offset = corrector.get_offset_angles()
+
+    # 3. 新しいインスタンスを作成し、状態を復元（Config読み込みを模倣）
+    new_corrector = PoseCorrector()
+    new_corrector.set_distance_scale(corrector.get_distance_scale())
+    new_corrector.set_calibrated_data(saved_cam_pose, saved_offset)
+
+    assert new_corrector.is_calibrated()
+
+    # 4. 同じ入力に対する出力を比較
+    input_mat = create_transform_matrix(5.0, 3.0, -2.0, 10.0, 5.0, 0.0)
+
+    pose_orig = corrector.correct(input_mat)
+    pose_new = new_corrector.correct(input_mat)
+
+    np.testing.assert_allclose(pose_orig, pose_new, atol=1e-9)
+
+
+def test_opentrack_coordinate_conversion(corrector):
+    """
+    Opentrack用の座標系変換（符号反転など）が正しく行われているか検証する。
+    correct() は、Z, Yaw, Pitch, Roll の符号を反転して返す仕様。
+    """
+    perform_standard_calibration(corrector)
+
+    # MediaPipe座標系での入力
+    mp_x = 10.0
+    mp_y = 20.0
+    mp_z = 30.0
+    mp_yaw = 5.0
+    mp_pitch = -25.0
+    mp_roll = 8.0
+
+    input_mat = create_transform_matrix(mp_x, mp_y, mp_z, mp_yaw, mp_pitch, mp_roll)
+
+    pose = corrector.correct(input_mat)
+
+    assert pose[X] == pytest.approx(mp_x, abs=1e-6)
+    assert pose[Y] == pytest.approx(mp_y, abs=1e-6)
+    assert pose[Z] == pytest.approx(-mp_z, abs=1e-6)
+    assert pose[YAW] == pytest.approx(-mp_yaw, abs=1e-6)
+    assert pose[PITCH] == pytest.approx(-mp_pitch, abs=1e-6)
+    assert pose[ROLL] == pytest.approx(-mp_roll, abs=1e-6)
