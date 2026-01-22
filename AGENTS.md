@@ -67,7 +67,9 @@ Webカメラを使用して、ユーザーの頭部の動きを6DoF（X、Y、Z�
     9. **タグのプッシュ**:
         1. `git tag vX.X.X`
         2. `git push origin vX.X.X`
-    10. **リリース（ユーザー作業）**: 自動作成されたReleaseドラフトをユーザーが`gh release view vX.X.X --web`で確認してリリースするまで待て。
+    10. **リリース（ユーザー作業）**: GitHub Actionsのワークフローで自動作成されたReleaseドラフトをユーザーがブラウザで確認し、リリースするまで待て。
+        1. `gh run view --web`（ワークフローの実行状況をブラウザで確認）
+        2. `gh release view vX.X.X --web`（Releaseドラフトをブラウザで確認）
     11. **`master`ブランチの同期**:
         1. `git checkout master`
         2. `git pull origin master`
