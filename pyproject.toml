@@ -30,6 +30,7 @@ no-license-path = "true"
 ignore-packages = [
     "pip-licenses",
     "pyinstaller",
+    "pytest",
     "ruff",
 ]
 output-file = "NOTICE.txt"
