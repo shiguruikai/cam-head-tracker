@@ -6,51 +6,51 @@ Webカメラを使用して、頭部の動きを6DoF（X, Y, Z, Yaw, Pitch, Roll
 
 ## 特徴
 
-- **高精度ヘッドトラッキング:** オフラインで動作する MediaPipe Face Landmark Detection を使用。
-- **キャリブレーション機能:** カメラの設置位置（角度と高さ）を、数秒の前後移動で算出します。
-- **UDP送信:** opentrackの入力として使用可能。
+- **高精度ヘッドトラッキング**: オフラインで動作する MediaPipe Face Landmark Detection を使用
+- **キャリブレーション機能**: カメラの設置位置を頭部の動きから算出し、出力座標をモニター基準に補正
+- **UDP送信**: opentrackの入力として使用可能
 
 ## 動作環境
 
-- **OS:** Windows 10 / 11 (64bit)
-- **Webカメラ:** 640x360以上、30FPS以上を推奨
+- **OS**: Windows 10 / 11 (64bit)
+- **Webカメラ**: 解像度640x360以上、30FPS以上を推奨
 
 > [!TIP]
 >
-> - Android 14以降のスマートフォンは、標準機能でUSB Webカメラにできます。
+> - Android 14以降のスマートフォンは、Androidの標準機能でUSB Webカメラにできます。
 > - 遅延を防ぐため、USB 3.0以上での接続を推奨します。
 
 ## 使い方
 
-1. **ダウンロード:** [Releases](https://github.com/shiguruikai/cam-head-tracker/releases)から最新の`CamHeadTracker-vX.X.X.zip`をダウンロードし、展開します。
-2. **起動:** `CamHeadTracker.exe`を実行します。
-3. **カメラ選択:** [Camera Device]で使用するカメラと解像度を選択します。
-4. **opentrackの設定:**
+1. **ダウンロード**: [Releases](https://github.com/shiguruikai/cam-head-tracker/releases)から最新の`CamHeadTracker-vX.X.X.zip`をダウンロードし、展開します。
+2. **起動**: `CamHeadTracker.exe`を実行します。
+3. **カメラ選択**: [Camera Device]で使用するカメラと解像度を選択します。
+4. **opentrackの設定**:
     1. opentrackを起動し、[Input]で`UDP over network`を選択します。
     2. 右横の🔨ボタンをクリックし、Portの番号を確認します。（デフォルト: `4242`）
     3. CamHeadTracker側のPortに同じ番号を入力し、[Apply]ボタンをクリックします。
 
 > [!NOTE]
 >
-> - Microsoft Flight Simulator 2024で使用する場合は、opentrackの[Output]で`freetrack 2.0 Enhanced`を選択します。
+> Microsoft Flight Simulator 2024で使うには、opentrackの[Output]で`freetrack 2.0 Enhanced`を選択します。
 
 #### キャリブレーション手順
 
 精度を最大限に引き出すために、以下の手順でキャリブレーションを行ってください。
 
-1. **距離の調整:** [Distance Scale]をスライダーで調整し、画面上の`Z`の値が、実際のカメラから顔までの距離（cm）とだいたい一致するようにします。
-2. **計測開始:** [Start Calibration]ボタンをクリックします。
-3. **水平に動く:** モニターの正面を向いたまま、首を動かさずゆっくりと前方または後方へ移動（15cm〜30cm程度）します。
-    - **注意:** カメラが横にある場合でも、カメラを見るのではなく、モニターの正面を向いたまま真っ直ぐ前後移動してください。
-4. **完了:** プログレスバーがいっぱいになるとカメラの位置と角度が自動で計算され、頭の動きがモニター基準に補正されます。
+1. **距離の調整**: [Distance Scale]をスライダーで調整し、画面上の`Z`の値が、実際のカメラから顔までの距離（cm）とだいたい一致するようにします。
+2. **計測開始**: [Start Calibration]ボタンをクリックします。
+3. **水平に動く**: モニターの正面を向いたまま、首を動かさずゆっくりと前方または後方へ移動（15cm〜30cm程度）します。
+    - **注意**: カメラが横にある場合でも、カメラを見るのではなく、モニターの正面を向いたまま真っ直ぐ前か後ろへ移動してください。
+4. **完了**: プログレスバーがいっぱいになるとカメラの位置と角度が自動で計算され、頭の動きがモニター基準に補正されます。
 
 ## トラブルシューティング
 
-- **FPSが低い:** カメラの解像度を下げてみてください。
-- **CPU使用率が高い:** [Enable Preview]のチェックを外すとプレビューが非表示になり、CPU使用率は若干低下します。
-- **動きが逆になる:** opentrack側の[Options] > [Output]タブで、各軸Invert（反転）設定を行ってください。
-- **感度が高い:** opentrack側の[Filter]で感度を調整してください。
-- **中心位置の初期化:** キャリブレーション完了後、視点がズレている場合は、opentrack側の「Center」ショートカットキー（[Options] > [Shortcuts]タブで設定可能）を使用して位置をリセットしてください。
+- **FPSが低い**: カメラの解像度を下げてみてください。
+- **CPU使用率が高い**: [Enable Preview]のチェックを外すとプレビューが非表示になり、CPU使用率は若干低下します。
+- **動きが逆になる**: opentrack側の[Options] > [Output]タブで、各軸Invert（反転）設定を行ってください。
+- **感度が高い**: opentrack側の[Filter]で感度を調整してください。
+- **中心位置の初期化**: キャリブレーション完了後、視点がズレている場合は、opentrack側の「Center」ショートカットキー（[Options] > [Shortcuts]タブで設定可能）を使用して位置をリセットしてください。
 
 ## 開発者向け情報
 
