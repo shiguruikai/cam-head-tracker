@@ -286,28 +286,34 @@ class CamHeadTrackerApp(tk.Frame):
             udp_port = ""
 
         config = configparser.ConfigParser()
+
         config["Camera"] = {
             "name": self.cam_cbx_var.get(),
             "option": self.cam_option_cbx.get(),
             "enable_preview": self.preview_ckb_var.get(),
         }
+
+        cam_pose = self.corrector.get_cam_pose()
+        offset_yaw, offset_pitch, offset_roll = self.corrector.get_offset_angles()
         config["Calibration"] = {
             "is_calibrated": str(self.corrector.is_calibrated()),
             "distance_scale": f"{self.corrector.get_distance_scale():.6f}",
-            "cam_x": f"{self.corrector.get_cam_x():.6f}",
-            "cam_y": f"{self.corrector.get_cam_y():.6f}",
-            "cam_z": f"{self.corrector.get_cam_z():.6f}",
-            "cam_yaw": f"{self.corrector.get_cam_yaw():.6f}",
-            "cam_pitch": f"{self.corrector.get_cam_pitch():.6f}",
-            "cam_roll": f"{self.corrector.get_cam_roll():.6f}",
-            "offset_yaw": f"{self.corrector.get_offset_yaw():.6f}",
-            "offset_pitch": f"{self.corrector.get_offset_pitch():.6f}",
-            "offset_roll": f"{self.corrector.get_offset_roll():.6f}",
+            "cam_x": f"{cam_pose[X]:.6f}",
+            "cam_y": f"{cam_pose[Y]:.6f}",
+            "cam_z": f"{cam_pose[Z]:.6f}",
+            "cam_yaw": f"{cam_pose[YAW]:.6f}",
+            "cam_pitch": f"{cam_pose[PITCH]:.6f}",
+            "cam_roll": f"{cam_pose[ROLL]:.6f}",
+            "offset_yaw": f"{offset_yaw:.6f}",
+            "offset_pitch": f"{offset_pitch:.6f}",
+            "offset_roll": f"{offset_roll:.6f}",
         }
+
         config["UDPClient"] = {
             "host": self.udp_host_var.get().strip(),
             "port": udp_port,
         }
+
         config["UI"] = {
             "preview_text_color": self.preview_text_color,
         }
@@ -384,7 +390,7 @@ class CamHeadTrackerApp(tk.Frame):
                             config["Calibration"].getfloat("cam_pitch", 0.0),
                             config["Calibration"].getfloat("cam_roll", 0.0),
                         ),
-                        offset_angle=(
+                        offset_angles=(
                             config["Calibration"].getfloat("offset_yaw", 0.0),
                             config["Calibration"].getfloat("offset_pitch", 0.0),
                             config["Calibration"].getfloat("offset_roll", 0.0),
@@ -437,11 +443,9 @@ class CamHeadTrackerApp(tk.Frame):
 
         # 顔ランドマークが検出できた場合の処理
         if tracker_result:
-            raw_pose = tracker_result.pose
-
             # キャリブレーション中の場合
             if self.is_calibrating:
-                if self.corrector.add_calibration_sample(raw_pose):
+                if self.corrector.add_calibration_sample(tracker_result.matrix):
                     sample_len = self.corrector.get_calibration_sample_len()
 
                     # プログレスバーを更新
@@ -454,7 +458,7 @@ class CamHeadTrackerApp(tk.Frame):
                         self.ui_executor.schedule("update_calibration_ui", self.update_calibration_ui)
 
             # データを補正
-            pose = self.corrector.correct(raw_pose)
+            pose = self.corrector.correct(tracker_result.matrix)
 
             # データをUDP送信
             if self.udp_pose_writer:
@@ -521,29 +525,40 @@ class CamHeadTrackerApp(tk.Frame):
             )
 
     def update_calibration_ui(self):
+        if self.is_calibrating:
+            self.cal_btn.config(text="Stop Calibration")
+        else:
+            self.cal_btn.config(text="Start Calibration")
+
         self.distance_scale_var.set(self.corrector.get_distance_scale())
 
         if self.corrector.is_calibrated():
             self.cal_pbar_var.set(self.cal_pbar["maximum"])
 
+            cam_pose = self.corrector.get_cam_pose()
+            offset_yaw, offset_pitch, offset_roll = self.corrector.get_offset_angles()
+
             self.cal_result_lbl_var.set(
                 f"""
-Camera X      {self.corrector.get_cam_x():>5.1f} cm
-Camera Y      {self.corrector.get_cam_y():>5.1f} cm
-Camera Yaw    {self.corrector.get_cam_yaw():>5.1f} °
-Camera Pitch  {self.corrector.get_cam_pitch():>5.1f} °
-Camera Roll   {self.corrector.get_cam_roll():>5.1f} °
-Offset Yaw    {self.corrector.get_offset_yaw():>5.1f} °
-Offset Pitch  {self.corrector.get_offset_pitch():>5.1f} °
-Offset Roll   {self.corrector.get_offset_roll():>5.1f} °
+Camera X      {cam_pose[X]:>5.1f} cm
+Camera Y      {cam_pose[Y]:>5.1f} cm
+Camera Z      {cam_pose[Z]:>5.1f} cm
+Camera Yaw    {cam_pose[YAW]:>5.1f} °
+Camera Pitch  {cam_pose[PITCH]:>5.1f} °
+Camera Roll   {cam_pose[ROLL]:>5.1f} °
+Offset Yaw    {offset_yaw:>5.1f} °
+Offset Pitch  {offset_pitch:>5.1f} °
+Offset Roll   {offset_roll:>5.1f} °
 """.strip()
             )
         else:
             self.cal_pbar_var.set(0)
+
             self.cal_result_lbl_var.set(
                 """
 Camera X       --.- cm
 Camera Y       --.- cm
+Camera Z       --.- cm
 Camera Yaw     --.- °
 Camera Pitch   --.- °
 Camera Roll    --.- °
@@ -552,11 +567,6 @@ Offset Pitch   --.- °
 Offset Roll    --.- °
 """.strip()
             )
-
-        if self.is_calibrating:
-            self.cal_btn.config(text="Stop Calibration")
-        else:
-            self.cal_btn.config(text="Start Calibration")
 
     def show_preview_canvas(self):
         self.preview_canvas.pack(fill="both", expand=True, padx=(10, 0))

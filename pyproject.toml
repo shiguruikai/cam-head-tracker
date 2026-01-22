@@ -13,6 +13,7 @@ dependencies = [
 dev = [
     "pip-licenses>=5.5.0",
     "pyinstaller>=6.18.0",
+    "pytest>=9.0.2",
     "ruff>=0.14.11",
 ]
 
@@ -29,6 +30,10 @@ no-license-path = "true"
 ignore-packages = [
     "pip-licenses",
     "pyinstaller",
+    "pytest",
     "ruff",
 ]
 output-file = "NOTICE.txt"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
