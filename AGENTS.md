@@ -59,7 +59,7 @@ Webカメラを使用して、ユーザーの頭部の動きを6DoF（X、Y、Z�
     5. **コミット**: `git commit -m "build: bump version to vX.X.X"`
     6. **ブランチのプッシュとPRの作成**:
         1. `git push origin HEAD`
-        2. `gh pr create --title "build: bump version to vX.X.X" --body-file .gemini/tmp/pr_body.md --label build`
+        2. `gh pr create --title "build: bump version to vX.X.X" --body-file .gemini/tmp/pr_body.md --label build --label skip-changelog`
     7. **PRのマージ（ユーザー作業）**: ユーザーがPRをマージするのを待て。
     8. **`master`ブランチの同期**:
         1. `git checkout master`

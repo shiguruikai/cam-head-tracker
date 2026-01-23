@@ -2,6 +2,7 @@ changelog:
   exclude:
     labels:
       - ignore
+      - skip-changelog
     authors:
       - github-actions[bot]
   categories:
@@ -14,7 +15,7 @@ changelog:
     - title: "🏗️ ビルド・依存関係"
       labels:
         - build
-    - title: "⚡ パフォーマンス改善"
+    - title: "⚡ パフォーマンス向上"
       labels:
         - perf
     - title: "♻️ リファクタリング"
