@@ -4,13 +4,13 @@ Webカメラを使用して、頭部の動きを6DoF（X, Y, Z, Yaw, Pitch, Roll
 
 <img src="docs/app.jpg" width="600" alt="application screenshot">
 
-## 特徴
+## ✨特徴
 
 - **高精度ヘッドトラッキング**: オフラインで動作する MediaPipe Face Landmark Detection を使用
 - **キャリブレーション機能**: カメラの設置位置を頭部の動きから算出し、出力座標をモニター基準に補正
 - **UDP送信**: opentrackの入力として使用可能
 
-## 動作環境
+## 💻動作環境
 
 - **OS**: Windows 10 / 11 (64bit)
 - **Webカメラ**: 解像度640x360以上、30FPS以上を推奨
@@ -20,7 +20,7 @@ Webカメラを使用して、頭部の動きを6DoF（X, Y, Z, Yaw, Pitch, Roll
 > - Android 14以降のスマートフォンは、Androidの標準機能でUSB Webカメラにできます。
 > - 遅延を防ぐため、USB 3.0以上での接続を推奨します。
 
-## 使い方
+## 🚀使い方
 
 1. **ダウンロード**: [Releases](https://github.com/shiguruikai/cam-head-tracker/releases)から最新の`CamHeadTracker-vX.X.X.zip`をダウンロードし、展開します。
 2. **起動**: `CamHeadTracker.exe`を実行します。
@@ -44,7 +44,7 @@ Webカメラを使用して、頭部の動きを6DoF（X, Y, Z, Yaw, Pitch, Roll
     - **注意**: カメラが横にある場合でも、カメラを見るのではなく、モニターの正面を向いたまま真っ直ぐ前か後ろへ移動してください。
 4. **完了**: プログレスバーがいっぱいになるとカメラの位置と角度が自動で計算され、頭の動きがモニター基準に補正されます。
 
-## トラブルシューティング
+## 🔍トラブルシューティング
 
 - **FPSが低い**: カメラの解像度を下げてみてください。
 - **CPU使用率が高い**: [Enable Preview]のチェックを外すとプレビューが非表示になり、CPU使用率は若干低下します。
@@ -52,7 +52,7 @@ Webカメラを使用して、頭部の動きを6DoF（X, Y, Z, Yaw, Pitch, Roll
 - **感度が高い**: opentrack側の[Filter]で感度を調整してください。
 - **中心位置の初期化**: キャリブレーション完了後、視点がズレている場合は、opentrack側の「Center」ショートカットキー（[Options] > [Shortcuts]タブで設定可能）を使用して位置をリセットしてください。
 
-## 開発者向け情報
+## 🛠️開発者向け情報
 
 ### ビルド手順
 
@@ -109,12 +109,12 @@ GitHub ActionsのワークフローでFFmpegの最新安定版を定期的にチ
     ```
 4. 生成された`out/ffmpeg.exe`を`cam_head_tracker/assets/ffmpeg.exe`に配置します。
 
-## バグ報告と貢献
+## 🐛バグ報告と貢献
 
 個人使用の目的で公開したのですが、興味を持っていただきありがとうございます。<br>
 バグ報告やご質問等あればIssuesでご連絡ください。
 
-## ライセンス
+## 📝ライセンス
 
 [MIT License](LICENSE.txt)
 
