@@ -49,7 +49,7 @@ Webカメラを使用して、頭部の動きを6DoF（X, Y, Z, Yaw, Pitch, Roll
 - **FPSが低い**: カメラの解像度を下げてみてください。
 - **CPU使用率が高い**: [Enable Preview]のチェックを外すとプレビューが非表示になり、CPU使用率は若干低下します。
 - **動きが逆になる**: opentrack側の[Options] > [Output]タブで、各軸Invert（反転）設定を行ってください。
-- **感度が高い**: opentrack側の[Filter]で感度を調整してください。
+- **感度が高い**: opentrack側の[Mapping]や[Filter]で感度を調整してください。
 - **中心位置の初期化**: キャリブレーション完了後、視点がズレている場合は、opentrack側の「Center」ショートカットキー（[Options] > [Shortcuts]タブで設定可能）を使用して位置をリセットしてください。
 
 ## 🛠️開発者向け情報
