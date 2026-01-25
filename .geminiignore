@@ -1,2 +1,2 @@
 # .gitignore では無視するが、Gemini CLI では無視したくないファイルを否定パターンで記述する。
-!.gemini/tmp/
+!.tmp/

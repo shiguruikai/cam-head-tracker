@@ -1,6 +1,9 @@
 # env
 .env
 
+# tmp
+.tmp/
+
 # Intellij IDEA
 .idea/
 *.iml
@@ -20,6 +23,3 @@ config.ini
 
 # Repomix
 repomix-output.md
-
-# Gemini CLI
-.gemini/tmp/
