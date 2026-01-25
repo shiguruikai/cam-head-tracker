@@ -34,7 +34,9 @@
     "useDefaultPatterns": true,
     "customPatterns": [
       "**/repomix.config.json",
-      "**/*.txt"
+      "**/*.txt",
+      ".gemini/**",
+      ".geminiignore"
     ]
   },
   "security": {
