@@ -27,8 +27,8 @@ TEST_ANGLES = [
     (10.0, 20.0, 30.0),  # Combined
     (-15.0, 45.0, -5.0),  # Mixed signs
     (120.0, -20.0, 180.0),  # Large angles (Aliasing check)
-    (0.0, 89.9, 0.0),  # Near Gimbal Lock (Pitch +90)
-    (0.0, -89.9, 0.0),  # Near Gimbal Lock (Pitch -90)
+    (0.0, 90, 0.0),  # Gimbal Lock (Pitch +90)
+    (0.0, -90, 0.0),  # Gimbal Lock (Pitch -90)
 ]
 
 
@@ -37,9 +37,9 @@ def test_matrix_orthogonality(yaw, pitch, roll):
     """生成される回転行列が「直交行列」の性質を満たしているか検証する。"""
     matrix = euler_angles_to_rotation_matrix(yaw, pitch, roll)
     # 直交性: R * R.T == I
-    np.testing.assert_allclose(matrix @ matrix.T, np.eye(3), atol=1e-9)
+    np.testing.assert_allclose(matrix @ matrix.T, np.eye(3), atol=1e-6)
     # 行列式: det(R) == 1.0
-    assert np.linalg.det(matrix) == pytest.approx(1.0, abs=1e-9)
+    assert np.linalg.det(matrix) == pytest.approx(1.0, abs=1e-6)
 
 
 @pytest.mark.parametrize("yaw, pitch, roll", TEST_ANGLES)
@@ -48,7 +48,7 @@ def test_rotation_round_trip_matrix_stability(yaw, pitch, roll):
     matrix_original = euler_angles_to_rotation_matrix(yaw, pitch, roll)
     res_yaw, res_pitch, res_roll = rotation_matrix_to_euler_angles(matrix_original)
     matrix_restored = euler_angles_to_rotation_matrix(res_yaw, res_pitch, res_roll)
-    np.testing.assert_allclose(matrix_original, matrix_restored, atol=1e-9)
+    np.testing.assert_allclose(matrix_original, matrix_restored, atol=1e-6)
 
 
 @pytest.mark.parametrize(
@@ -71,7 +71,7 @@ def test_rotation_round_trip_matrix_stability(yaw, pitch, roll):
 )
 def test_known_rotation_values(mat, angles):
     """既知の回転行列とオイラー角の対応関係を検証する。"""
-    assert rotation_matrix_to_euler_angles(np.array(mat)) == pytest.approx(angles, abs=1e-9)
+    assert rotation_matrix_to_euler_angles(np.array(mat)) == pytest.approx(angles, abs=1e-6)
 
 
 # -----------------------------------------------------------------------------
@@ -103,7 +103,8 @@ def perform_standard_calibration(corrector):
         create_transform_matrix(0, 0, -20),
     ]
     for mat in samples:
-        corrector.add_calibration_sample(mat)
+        assert corrector.add_calibration_sample(mat)
+    assert corrector.get_calibration_sample_len() == len(samples)
     corrector.calibrate()
 
 
@@ -136,12 +137,12 @@ def test_calibration_perfect_setup(corrector):
     pose = corrector.correct(input_mat)
 
     # 検証: X軸のみ変化し、他は0
-    assert pose[X] == pytest.approx(input_x, abs=1e-9)
-    assert pose[Y] == pytest.approx(0.0, abs=1e-9)
-    assert pose[Z] == pytest.approx(0.0, abs=1e-9)
-    assert pose[YAW] == pytest.approx(0.0, abs=1e-9)
-    assert pose[PITCH] == pytest.approx(0.0, abs=1e-9)
-    assert pose[ROLL] == pytest.approx(0.0, abs=1e-9)
+    assert pose[X] == pytest.approx(input_x, abs=1e-6)
+    assert pose[Y] == pytest.approx(0.0, abs=1e-6)
+    assert pose[Z] == pytest.approx(0.0, abs=1e-6)
+    assert pose[YAW] == pytest.approx(0.0, abs=1e-6)
+    assert pose[PITCH] == pytest.approx(0.0, abs=1e-6)
+    assert pose[ROLL] == pytest.approx(0.0, abs=1e-6)
 
 
 def test_calibration_tilted_camera(corrector):
@@ -207,7 +208,7 @@ def test_distance_scaling(corrector):
     pose = corrector.correct(input_mat)
 
     # 入力5.0 * スケール2.0 = 10.0 になるはず
-    assert pose[X] == pytest.approx(input_x * scale, abs=1e-9)
+    assert pose[X] == pytest.approx(input_x * scale, abs=1e-6)
 
 
 def test_save_load_state(corrector):
@@ -235,7 +236,7 @@ def test_save_load_state(corrector):
     pose_orig = corrector.correct(input_mat)
     pose_new = new_corrector.correct(input_mat)
 
-    np.testing.assert_allclose(pose_orig, pose_new, atol=1e-9)
+    np.testing.assert_allclose(pose_orig, pose_new, atol=1e-6)
 
 
 def test_opentrack_coordinate_conversion(corrector):

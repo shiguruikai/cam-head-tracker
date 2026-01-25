@@ -1,5 +1,3 @@
-# tracker.py
-
 import itertools
 import math
 from dataclasses import dataclass
@@ -22,7 +20,7 @@ Landmark = tuple[float, float]
 def rotation_matrix_to_euler_angles(matrix: np.ndarray) -> Angles:
     """
     3x3 回転行列をオイラー角（Yaw, Pitch, Roll）に変換します。単位は度 (degree) です。
-    ZYX順序 (R = Rz @ Ry @ Rx) に基づいて分解します。
+    ZYX順序に基づいて分解します。
     """
     pitch = math.degrees(math.atan2(matrix[2, 1], matrix[2, 2]))
     yaw = math.degrees(math.atan2(-matrix[2, 0], math.sqrt(matrix[0, 0] ** 2 + matrix[1, 0] ** 2)))
@@ -33,7 +31,7 @@ def rotation_matrix_to_euler_angles(matrix: np.ndarray) -> Angles:
 def euler_angles_to_rotation_matrix(yaw_deg: float, pitch_deg: float, roll_deg: float) -> np.ndarray:
     """
     オイラー角（Yaw, Pitch, Roll）を 3x3 回転行列に変換します。単位は度 (degree) です。
-    ZYX順序 (R = Rz @ Ry @ Rx) で回転行列を合成します。
+    ZYX順序で回転行列を合成します。
     """
     p = math.radians(pitch_deg)
     y = math.radians(yaw_deg)
@@ -124,40 +122,42 @@ class MediapipeTracker(Tracker):
 
 class PoseCorrector:
     """
-    カメラの設置位置や角度をキャリブレーションによって推定し、
-    トラッキングデータをモニター正面基準のワールド座標系に補正するクラス。
+    カメラの設置位置や角度をキャリブレーションし、
+    トラッキングデータを「モニター正面基準のワールド座標系」に補正するクラス。
 
-    キャリブレーション中の前提条件:
-        1. モニターに向かって正対し、頭を垂直（ロール角ゼロ）に保つこと。
-        2. モニターの正面方向（Z軸）に沿って真っ直ぐ前または後に平行移動すること。
+    キャリブレーション手順:
+        1. モニターに正対し、頭を垂直（ロール角ゼロ）に保つ。
+        2. モニターの正面方向（Z軸）に沿って、真っ直ぐ前後に平行移動する。
 
     補足:
-        - Mediapipeの出力に合わせて、dtype=np.float32 を使用する。
+        - Mediapipeの出力に合わせて内部計算には dtype=np.float32 を使用する。
     """
 
     def __init__(self):
         self._is_calibrated = False
-        self._calibration_samples: list[np.ndarray] = []  # 4x4 同次変換行列のリスト
+        self._calibration_samples: list[np.ndarray] = []
         self._distance_scale = 1.0
 
-        # カメラ座標系からワールド座標系への基底変換を行う 3x3 回転行列
+        # カメラ座標系のベクトルをワールド座標系（モニター基準）へ投影するための基底変換行列
         self._camera_to_world_rot = np.eye(3, dtype=np.float32)
-        # ワールド座標系におけるカメラ位置ベクトル（平行移動ベクトル）
-        self._cam_pos = np.zeros(3, dtype=np.float32)
-        # 正面を向くための 3x3 回転行列（初期姿勢の逆行列）
-        self._head_zero_rot = np.eye(3, dtype=np.float32)
 
-        # 回転補正の事前計算用行列
-        self._combined_rot_offset = self._head_zero_rot @ self._camera_to_world_rot
+        # ワールド座標系における原点オフセット（位置補正用ベクトル）
+        self._origin_offset = np.zeros(3, dtype=np.float32)
+
+        # 初期姿勢（正対状態）を角度ゼロとするための回転オフセット行列
+        self._zero_rot_offset = np.eye(3, dtype=np.float32)
+
+        # 事前計算用の回転オフセット行列
+        self._combined_rot_offset = self._zero_rot_offset @ self._camera_to_world_rot
 
     def reset_calibration(self):
-        """キャリブレーション状態をリセットします。"""
+        """キャリブレーション状態を初期化します。"""
         self._is_calibrated = False
         self._calibration_samples = []
         self._camera_to_world_rot = np.eye(3, dtype=np.float32)
-        self._cam_pos = np.zeros(3, dtype=np.float32)
-        self._head_zero_rot = np.eye(3, dtype=np.float32)
-        self._combined_rot_offset = self._head_zero_rot @ self._camera_to_world_rot
+        self._origin_offset = np.zeros(3, dtype=np.float32)
+        self._zero_rot_offset = np.eye(3, dtype=np.float32)
+        self._combined_rot_offset = self._zero_rot_offset @ self._camera_to_world_rot
 
     def is_calibrated(self) -> bool:
         """キャリブレーション済みかどうかを返します。"""
@@ -166,60 +166,62 @@ class PoseCorrector:
     def get_distance_scale(self) -> float:
         return self._distance_scale
 
-    def set_distance_scale(self, v: float):
+    def set_distance_scale(self, scale: float):
         """移動距離の倍率を設定します。"""
-        self._distance_scale = v
+        self._distance_scale = scale
 
     def get_calibration_sample_len(self) -> int:
-        """現在収集済みのキャリブレーションサンプル数を返します。"""
+        """現在蓄積されているサンプルデータ数を返します。"""
         return len(self._calibration_samples)
 
     def get_cam_pose(self) -> Pose:
-        """推定されたカメラの設置姿勢（位置ベクトルとオイラー角）を返します。"""
-        # カメラの回転は、ワールド座標系への基底変換行列の逆変換（転置行列）に相当
+        """推定されたカメラの設置姿勢（位置とオイラー角）を返します。"""
+        # カメラの回転は、ワールド座標系への基底変換行列から算出できる。
         yaw, pitch, roll = rotation_matrix_to_euler_angles(self._camera_to_world_rot)
-        return self._cam_pos[X], self._cam_pos[Y], self._cam_pos[Z], yaw, pitch, roll
+        return self._origin_offset[X], self._origin_offset[Y], self._origin_offset[Z], yaw, pitch, roll
 
     def get_offset_angles(self) -> Angles:
-        yaw, pitch, roll = rotation_matrix_to_euler_angles(self._head_zero_rot)
+        yaw, pitch, roll = rotation_matrix_to_euler_angles(self._zero_rot_offset)
         return yaw, pitch, roll
 
     def set_calibrated_data(self, cam_pose: Pose, offset_angles: Angles):
+        """外部保存されたキャリブレーションデータを復元します。"""
         self._is_calibrated = True
 
-        self._cam_pos[X] = cam_pose[X]
-        self._cam_pos[Y] = cam_pose[Y]
-        self._cam_pos[Z] = cam_pose[Z]
+        # 位置の復元
+        self._origin_offset[X] = cam_pose[X]
+        self._origin_offset[Y] = cam_pose[Y]
+        self._origin_offset[Z] = cam_pose[Z]
 
+        # 回転行列の再構築
         self._camera_to_world_rot = euler_angles_to_rotation_matrix(
             cam_pose[YAW], cam_pose[PITCH], cam_pose[ROLL]
         ).astype(np.float32)
-
-        self._head_zero_rot = euler_angles_to_rotation_matrix(
+        self._zero_rot_offset = euler_angles_to_rotation_matrix(
             offset_angles[0], offset_angles[1], offset_angles[2]
         ).astype(np.float32)
 
-        # 事前計算用行列の更新
-        self._combined_rot_offset = self._head_zero_rot @ self._camera_to_world_rot
+        # 事前計算用の回転オフセット行列の更新
+        self._combined_rot_offset = self._zero_rot_offset @ self._camera_to_world_rot
 
     def add_calibration_sample(self, matrix: np.ndarray) -> bool:
         """
-        キャリブレーション用のサンプルデータを追加します。
-        データの偏りを防ぐため、前回追加したサンプルから一定の距離以上動いた場合にのみ追加します。
+        キャリブレーション用サンプルを追加します。
+        前回データからZ軸方向（奥行き）に一定以上動いた場合のみ採用します。
 
         :param matrix: MediaPipeが出力した 4x4 同次変換行列
         :return: サンプルが追加された場合はTrue
         """
         mat = matrix.copy()
 
-        # 平行移動成分（位置ベクトル）にスケールを適用
+        # X, Y, Z にスケール適用
         mat[:3, 3] *= self._distance_scale
 
         if self._calibration_samples:
             z = mat[2, 3]
             last_z = self._calibration_samples[-1][2, 3]
 
-            # Z軸（奥行き）の変化が小さい場合、サンプルとして採用しない
+            # Z軸の変化が小さい場合は無視（ノイズ対策およびデータ偏重の防止）
             if abs(last_z - z) < 0.5:  # 0.5cm
                 return False
 
@@ -227,7 +229,15 @@ class PoseCorrector:
         return True
 
     def calibrate(self):
-        """収集したサンプルデータに基づき、カメラの設置角度と位置を推定します。"""
+        """
+        蓄積されたサンプルデータに基づき、カメラの設置角度と位置を推定（キャリブレーション）します。
+
+        アルゴリズム概要:
+        1. 【回転】データの平均から「頭の上方向」と「正面方向」を特定。
+        2. 【移動】データの主成分分析(PCA)で「前後移動の軸（Z軸）」を特定。
+        3. 【基底】上記から直交するX, Y, Z軸（ワールド座標系）を構築。
+        4. 【オフセット】平均位置・姿勢が「原点・ゼロ」になるよう補正値を計算。
+        """
         if not self._calibration_samples:
             return
 
@@ -235,71 +245,62 @@ class PoseCorrector:
         positions = matrices[:, :3, 3]  # 位置ベクトル群 (N, 3)
         rotations = matrices[:, :3, :3]  # 回転行列群 (N, 3, 3)
 
-        # ----------------------------------------------------------------------
-        # Step 1: 基準となる頭の方向ベクトルを算出
-        # ----------------------------------------------------------------------
-        # キャリブレーション中は「正対して頭を垂直にしている」と仮定し、
-        # 平均的な頭の上方向ベクトルを「ワールド座標系の上方向」の基準として利用します。
-        rot_sum = np.sum(rotations, axis=0)
-        u, _, vh = np.linalg.svd(rot_sum)
+        # --- Step 1: カメラ座標系における平均的な頭の向きを算出 ---
+
+        # 単純平均ではなくSVDを使って回転行列の平均を求めます。
+        u, _, vh = np.linalg.svd(np.sum(rotations, axis=0))
         avg_head_rot = u @ vh  # 平均回転行列
 
-        # MediaPipeの回転行列の列ベクトルは、それぞれのローカル軸の方向ベクトルを表す
-        head_y_vec = avg_head_rot[:, 1]  # 頭の上方向ベクトル (Up)
-        head_z_vec = avg_head_rot[:, 2]  # 頭の正面方向ベクトル (Forward/Back)
+        # MediaPipeのローカル軸に基づく方向ベクトルを抽出
+        head_up_vec = avg_head_rot[:, 1]  # 頭の上方向
+        head_forward_vec = avg_head_rot[:, 2]  # 頭の正面方向
 
-        # ----------------------------------------------------------------------
-        # Step 2: 平行移動データからワールド座標系のZ軸（奥行き）を決定
-        # ----------------------------------------------------------------------
-        # 位置ベクトルの主成分分析（SVD）を行い、分散が最大となる軸（＝ユーザーの移動方向ベクトル）を抽出します。
-        centered_pos = positions - np.mean(positions, axis=0)
-        _, _, vh = np.linalg.svd(centered_pos)
-        moving_axis = vh[0]  # 第1主成分ベクトル
+        # --- Step 2: 移動データからワールド座標系のZ軸を決定 ---
 
-        # 移動方向ベクトルの符号（前後）を頭の向きと合わせる。
-        if moving_axis @ head_z_vec < 0:
-            moving_axis *= -1
+        # 平均位置ベクトル
+        mean_pos = np.mean(positions, axis=0)
 
-        # 正規化して、ワールド座標系のZ軸単位ベクトルを定義します。
-        world_z_axis = moving_axis / np.linalg.norm(moving_axis)
+        # 中心化した位置ベクトル群から、SVDで分散が最大の方向（第1主成分）を抽出
+        centered_positions = positions - mean_pos
+        _, _, vh = np.linalg.svd(centered_positions)
+        moving_axis = vh[0]  # 最大分散方向（移動軸）の単位ベクトル
+        moving_axis /= np.linalg.norm(moving_axis)
 
-        # ----------------------------------------------------------------------
-        # Step 3: ワールド座標系のX軸（水平）とY軸（垂直）を決定
-        # ----------------------------------------------------------------------
-        # 「頭の上方向ベクトル」と「Z軸単位ベクトル」の外積から、それらに直交するX軸単位ベクトルを求めます。
-        world_x_axis = np.cross(head_y_vec, world_z_axis)
+        # 移動軸の向きを頭の正面方向に合わせる。
+        if moving_axis @ head_forward_vec < 0:
+            moving_axis *= -1  # 内積が負なら逆向きなので反転
+
+        world_z_axis = moving_axis  # ワールド座標系のZ軸(正面)
+
+        # --- Step 3: 正規直交基底の構築 ---
+
+        # X軸(左) = Y軸(頭上) * Z軸(正面)
+        world_x_axis = np.cross(head_up_vec, world_z_axis)
         world_x_axis /= np.linalg.norm(world_x_axis)
 
-        # 決定したZ軸とX軸から、それらに直交するY軸単位ベクトルを再計算します（正規直交基底の完成）。
-        # ベクトル三重積の性質上、このY軸は必ず head_y_vec と鋭角（同じ向き）になります。
+        # Y軸(上) = Z軸(正面) * X軸(左) （直交性を保証するために再計算）
         world_y_axis = np.cross(world_z_axis, world_x_axis)
+        world_y_axis /= np.linalg.norm(world_y_axis)
 
-        # ----------------------------------------------------------------------
-        # Step 4: カメラ座標系からワールド座標系への基底変換行列を構築
-        # ----------------------------------------------------------------------
-        # 算出した基底ベクトルを並べ、カメラ座標系からワールド座標系へ変換する 3x3 回転行列を作成します。
-        self._camera_to_world_rot = np.array([world_x_axis, world_y_axis, world_z_axis])
+        # カメラ座標系のベクトルをワールド座標系（モニター基準）へ投影するための基底変換行列
+        # 各行にワールド系の単位基底ベクトルを配置することで、行列積による座標変換を可能にする。
+        self._camera_to_world_rot = np.array([world_x_axis, world_y_axis, world_z_axis], dtype=np.float32)
 
-        # ----------------------------------------------------------------------
-        # Step 5: 位置と回転の原点（オフセット）を決定
-        # ----------------------------------------------------------------------
-        # 1. 位置のオフセット:
-        #    補正後の位置 P_world = R @ P_raw + cam_pos において、
-        #    キャリブレーション時の平均位置で XY が 0 になるように cam_pos (平行移動ベクトル) を設定します。
-        rotated_positions = positions @ self._camera_to_world_rot.T
-        self._cam_pos = -np.mean(rotated_positions, axis=0)
-        self._cam_pos[Z] = 0  # Z軸はモニターからの距離を残すため、オフセットは0とします。
+        # --- Step 4: 原点（位置）と初期姿勢（回転）のオフセットを算出 ---
 
-        # 2. 回転のオフセット:
-        #    キャリブレーション時の平均的な頭の向きを「正面（角度ゼロ）」とするための回転行列を計算します。
-        #    これは、ワールド座標系に変換された後の平均回転行列の逆行列（転置行列）となります。
-        aligned_rotations = self._camera_to_world_rot @ rotations
-        rot_sum = np.sum(aligned_rotations, axis=0)
-        u, _, vh = np.linalg.svd(rot_sum)
-        avg_aligned_rot = u @ vh
-        self._head_zero_rot = avg_aligned_rot.T
+        # 1. 位置オフセット
+        # カメラ座標系の平均位置をワールド座標系へ投影し、そのXY成分を打ち消すベクトルをオフセットとする。
+        mean_pos_world = self._camera_to_world_rot @ mean_pos
+        self._origin_offset = -mean_pos_world
+        self._origin_offset[Z] = 0  # Z（モニターとの距離）は維持
 
-        self._combined_rot_offset = self._head_zero_rot @ self._camera_to_world_rot
+        # 2. 回転オフセット
+        # ワールド座標系における頭の平均的な傾きを算出し、それを打ち消す逆回転（転置行列）をオフセットとする。
+        avg_rot_world = self._camera_to_world_rot @ avg_head_rot
+        self._zero_rot_offset = avg_rot_world.T
+
+        # correct()の計算負荷軽減のため、基底変換と回転オフセットを合成した行列を事前に計算する。
+        self._combined_rot_offset = self._zero_rot_offset @ self._camera_to_world_rot
 
         self._is_calibrated = True
         self._calibration_samples = []
@@ -311,25 +312,22 @@ class PoseCorrector:
         :param matrix: MediaPipeから得られた生の 4x4 同次変換行列
         :return: 補正済みの姿勢データ (x, y, z, yaw, pitch, roll)
         """
-        raw_pos = matrix[:3, 3] * self._distance_scale  # 位置ベクトル
-        raw_rot = matrix[:3, :3]  # 回転行列
+        # カメラ座標系における位置ベクトル
+        raw_pos = matrix[:3, 3] * self._distance_scale
+        # カメラ座標系における回転行列
+        raw_rot = matrix[:3, :3]
 
-        # 1. アフィン変換による位置補正:
-        #    カメラ座標系の位置ベクトルを基底変換し、カメラ位置ベクトルを加算します。
-        world_pos = self._camera_to_world_rot @ raw_pos + self._cam_pos
+        # カメラ座標系からワールド座標系へ位置ベクトルを変換（剛体変換）
+        # カメラの設置角度に基づく回転 + キャリブレーション位置を原点とする並進
+        world_pos = self._camera_to_world_rot @ raw_pos + self._origin_offset
 
-        # 2. 回転補正:
-        #    カメラ座標系の回転行列を基底変換し、初期姿勢の逆行列を掛けてゼロ点合わせを行います。
+        # 回転行列をワールド基準に変換し、同時に初期姿勢を角度ゼロへと正規化
+        # ワールド座標系回転行列 = (回転オフセット行列 @ 基底変換行列) @ カメラ座標系回転行列
         world_rot = self._combined_rot_offset @ raw_rot
 
-        # 3. オイラー角へ変換
+        # オイラー角へ変換
         yaw, pitch, roll = rotation_matrix_to_euler_angles(world_rot)
 
-        # 4. opentrackの座標系定義に合わせて出力
-        #    X: 左が正
-        #    Y: 上が正
-        #    Z: 後ろ（ユーザー側）が正
-        #    Yaw: 右向きが正
-        #    Pitch: 上向き正
-        #    Roll: 反時計回りが正
+        # opentrackの入力仕様に合わせ、符号を調整
+        # 出力座標系: X(左), Y(上), Z(手前), Yaw(右), Pitch(上), Roll(反時計)
         return float(world_pos[X]), float(world_pos[Y]), -float(world_pos[Z]), -yaw, -pitch, -roll
