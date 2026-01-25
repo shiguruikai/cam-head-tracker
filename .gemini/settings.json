@@ -36,6 +36,7 @@
       "run_shell_command(git log)",
       "run_shell_command(git show)",
       "run_shell_command(git status)",
+      "run_shell_command(uv run pyinstaller -y --clean build.spec)",
       "run_shell_command(uv run pytest)",
       "run_shell_command(uv run python -m cam_head_tracker.main)",
       "run_shell_command(uv run ruff)",
@@ -48,5 +49,8 @@
     "footer": {
       "hideContextPercentage": false
     }
+  },
+  "experimental": {
+    "skills": true
   }
 }
