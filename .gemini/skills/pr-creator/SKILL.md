@@ -24,7 +24,7 @@ description:
 4. **typeの確定**: 変更内容に基づき、`build`, `ci`, `docs`, `feat`, `fix`, `perf`, `refactor`, `test`からいずれか1つ選択する。
 5. **(Optional) ブランチ名の変更**: `<type>/<short_summary>`にリネーム（`git branch -m <branch_name>`）する。
 6. **本文とタイトルの下書き**:
-    - **本文**: `.github/pull_request_template.md`のテンプレートを使用して`.tmp/pr_body.md`に書き込む。
+    - **本文**: `.github/pull_request_template.md`のテンプレートを使用して`.tmp/pr_body.md`に書き込む。コメント（`<!-- -->`）や未入力の見出しは削除すること。
     - **タイトル**: `<type>: <日本語で簡潔かつ具体的な概要>`
 7. **プッシュとPR作成**: ユーザーの承認を得た後、PRを作成する。
     - **プッシュ**: `git push -u origin HEAD`
