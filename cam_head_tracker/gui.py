@@ -21,7 +21,7 @@ from cam_head_tracker.tracker import MediapipeTracker, Pose, PoseCorrector
 logger = logging.getLogger(__name__)
 
 
-APP_NAME = "Head Tracker"
+APP_NAME = "CamHeadTracker"
 ICON_FILE_PATH = Path(__file__).parent / "assets/icon.png"
 
 DEFAULT_DISTANCE_SCALE = 1.0
