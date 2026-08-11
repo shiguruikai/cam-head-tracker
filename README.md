@@ -56,8 +56,8 @@ Webカメラを使用して、頭部の動きを6DoF（X, Y, Z, Yaw, Pitch, Roll
 
 ### 前提
 
-Python パッケージマネージャー: [uv](https://github.com/astral-sh/uv)
-タスクランナー: [task](https://taskfile.dev/) または [Taskfile.yml](Taskfile.yml) に定義されているコマンドを直接実行
+- Python パッケージマネージャー: [uv](https://github.com/astral-sh/uv)
+- タスクランナー: [task](https://taskfile.dev/) または [Taskfile.yml](Taskfile.yml) に定義されているコマンドを直接実行
 
 ### ビルド手順
 
