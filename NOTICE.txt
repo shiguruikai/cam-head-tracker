@@ -1,6 +1,6 @@
 Pygments
-2.19.2
-BSD License
+2.20.0
+BSD-2-Clause
 Copyright (c) 2006-2022 by the respective authors (see AUTHORS file).
 All rights reserved.
 
@@ -3206,7 +3206,7 @@ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
 pyinstaller-hooks-contrib
-2025.11
+2026.6
 Apache Software License; GNU General Public License v2 (GPLv2)
 ============================================
 PyInstaller Community Hooks: License details
