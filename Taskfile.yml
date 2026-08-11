@@ -1,0 +1,34 @@
+version: "3"
+
+tasks:
+  setup:
+    desc: Install dependencies
+    cmds:
+      - uv sync --frozen
+
+  run:
+    desc: Start the application
+    cmds:
+      - uv run python -m cam_head_tracker.main
+
+  build:
+    desc: Clean build
+    cmds:
+      - uv run pyinstaller -y --clean build.spec --log-level=WARN
+
+  lint:
+    desc: Lint
+    cmds:
+      - uv run ruff check
+      - uv run ruff format --check .
+
+  format:
+    desc: Format
+    cmds:
+      - uv run ruff check --fix .
+      - uv run ruff format .
+
+  test:
+    desc: Test
+    cmds:
+      - uv run pytest
