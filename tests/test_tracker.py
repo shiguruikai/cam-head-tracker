@@ -60,9 +60,9 @@ def test_rotation_round_trip_matrix_stability(yaw, pitch, roll):
         pytest.param([[0, -1, 0], [1, 0, 0], [0, 0, 1]], (0.0, 0.0, 90.0), id="Roll 90 deg"),
         pytest.param(
             [
-                [0.4330127018922193, -0.75, 0.5],
-                [0.75, 0.25, -0.6123724356957945],
-                [-0.5, 0.6123724356957945, 0.6123724356957945],
+                [0.7391989197401166, -0.5732233047033631, 0.35355339059327373],
+                [0.6123724356957946, 0.35355339059327384, -0.7071067811865476],
+                [0.28033008588991065, 0.7391989197401166, 0.6123724356957946],
             ],
             (30.0, 45.0, 60.0),
             id="Complex case (Y:30, P:45, R:60)",
@@ -72,6 +72,49 @@ def test_rotation_round_trip_matrix_stability(yaw, pitch, roll):
 def test_known_rotation_values(mat, angles):
     """既知の回転行列とオイラー角の対応関係を検証する。"""
     assert rotation_matrix_to_euler_angles(np.array(mat)) == pytest.approx(angles, abs=1e-6)
+
+
+def rot_x(deg):
+    """X軸（Pitch）周りの基本回転行列"""
+    a = math.radians(deg)
+    return np.array([[1, 0, 0], [0, math.cos(a), -math.sin(a)], [0, math.sin(a), math.cos(a)]])
+
+
+def rot_y(deg):
+    """Y軸（Yaw）周りの基本回転行列"""
+    a = math.radians(deg)
+    return np.array([[math.cos(a), 0, math.sin(a)], [0, 1, 0], [-math.sin(a), 0, math.cos(a)]])
+
+
+def rot_z(deg):
+    """Z軸（Roll）周りの基本回転行列"""
+    a = math.radians(deg)
+    return np.array([[math.cos(a), -math.sin(a), 0], [math.sin(a), math.cos(a), 0], [0, 0, 1]])
+
+
+@pytest.mark.parametrize(
+    "yaw, pitch, roll",
+    [
+        pytest.param(45.0, 0.0, 20.0, id="Yaw + Roll"),
+        pytest.param(0.0, 20.0, 20.0, id="Pitch + Roll"),
+        pytest.param(30.0, 15.0, 15.0, id="Yaw + Pitch + Roll"),
+        pytest.param(-60.0, -10.0, 10.0, id="Large yaw with mixed signs"),
+        pytest.param(80.0, 0.0, -5.0, id="Near yaw 90 deg"),
+    ],
+)
+def test_decomposition_order_is_yaw_pitch_roll(yaw, pitch, roll):
+    """
+    Yaw -> Pitch -> Roll の順に回転した姿勢が、同じ角度に分解されるか検証する。
+    分解順序が異なると、Roll を含む組み合わせで他の軸に偽の角度が混入する。
+    """
+    # 準備: 基本回転を Yaw -> Pitch -> Roll の順に合成
+    matrix = rot_y(yaw) @ rot_x(pitch) @ rot_z(roll)
+
+    # 実行
+    result = rotation_matrix_to_euler_angles(matrix)
+
+    # 検証
+    assert result == pytest.approx((yaw, pitch, roll), abs=1e-6)
 
 
 # -----------------------------------------------------------------------------
@@ -194,21 +237,63 @@ def test_calibration_tilted_camera(corrector):
     assert pose[ROLL] == pytest.approx(0.0, abs=1e-6)
 
 
-def test_distance_scaling(corrector):
-    """距離スケール設定が出力に反映されるか検証する。"""
-    perform_standard_calibration(corrector)
-
-    # スケールを2倍に設定
+def test_distance_scale_applies_to_depth_only(corrector):
+    """距離スケールがカメラ座標系の Z（奥行き）にのみ適用されるか検証する。"""
+    # 準備: スケール2倍でキャリブレーション
     scale = 2.0
     corrector.set_distance_scale(scale)
+    perform_standard_calibration(corrector)
+    input_mat = create_transform_matrix(5.0, 3.0, -50.0)
 
-    input_x = 5.0
-    input_mat = create_transform_matrix(input_x, 0, 0)
-
+    # 実行
     pose = corrector.correct(input_mat)
 
-    # 入力5.0 * スケール2.0 = 10.0 になるはず
-    assert pose[X] == pytest.approx(input_x * scale, abs=1e-6)
+    # 検証: X, Y はそのまま、Z のみ2倍（opentrack 向けに符号反転）
+    assert pose[X] == pytest.approx(5.0, abs=1e-6)
+    assert pose[Y] == pytest.approx(3.0, abs=1e-6)
+    assert pose[Z] == pytest.approx(50.0 * scale, abs=1e-6)
+
+
+# MediaPipe の推定奥行き / 真の奥行き（例: 垂直画角 43° のカメラを 63° と仮定した場合）
+DEPTH_RATIO = 0.65
+
+
+def mediapipe_estimated_matrix(rotation, true_position):
+    """画角の仮定の違いにより、奥行きだけが DEPTH_RATIO 倍に縮んだ MediaPipe の推定結果を模擬する。"""
+    mat = np.eye(4)
+    mat[:3, :3] = rotation
+    mat[:3, 3] = np.asarray(true_position) * [1.0, 1.0, DEPTH_RATIO]
+    return mat
+
+
+@pytest.mark.parametrize("cam_yaw", [20.0, 40.0, -30.0])
+def test_calibration_with_depth_compressed_estimate(corrector, cam_yaw):
+    """
+    奥行きだけが縮んで推定される状況で、斜めに設置したカメラでも正しく補正できるか検証する。
+    距離スケールを X, Y, Z 一様にかけると、移動軸が歪んでカメラ角度と軸間の混入が生じる。
+    """
+    # 準備: 頭をカメラに対して cam_yaw だけ斜めに向けたまま、頭の正面方向へ前後移動してキャリブレーション
+    neutral_rot = rot_y(cam_yaw)
+    lateral, up, forward = neutral_rot[:, 0], neutral_rot[:, 1], neutral_rot[:, 2]
+    base_pos = np.array([-10.0, -5.0, -60.0])
+    corrector.set_distance_scale(1.0 / DEPTH_RATIO)
+    for d in (-10.0, -5.0, 0.0, 5.0, 10.0):
+        assert corrector.add_calibration_sample(mediapipe_estimated_matrix(neutral_rot, base_pos + forward * d))
+    corrector.calibrate()
+    base_pose = np.array(corrector.correct(mediapipe_estimated_matrix(neutral_rot, base_pos))[:3])
+
+    # 実行: 頭の向きはそのまま、横・上・前へ 10cm ずつ平行移動
+    def moved(direction):
+        mat = mediapipe_estimated_matrix(neutral_rot, base_pos + direction * 10.0)
+        return np.array(corrector.correct(mat)[:3]) - base_pose
+
+    # 検証: 各移動が対応する1軸にだけ現れる（Z は opentrack 向けに符号反転）
+    np.testing.assert_allclose(moved(lateral), [10.0, 0.0, 0.0], atol=1e-3)
+    np.testing.assert_allclose(moved(up), [0.0, 10.0, 0.0], atol=1e-3)
+    np.testing.assert_allclose(moved(forward), [0.0, 0.0, -10.0], atol=1e-3)
+
+    # 検証: カメラの設置角（頭に対する向き）が正しく推定される
+    assert corrector.get_cam_pose()[YAW] == pytest.approx(-cam_yaw, abs=1e-3)
 
 
 def test_save_load_state(corrector):
@@ -239,6 +324,69 @@ def test_save_load_state(corrector):
     np.testing.assert_allclose(pose_orig, pose_new, atol=1e-6)
 
 
+def perform_calibration(corrector, neutral_rot, moving_axis, base_pos):
+    """頭の姿勢を neutral_rot に保ったまま、moving_axis 方向へ前後移動するキャリブレーションを実行するヘルパー"""
+    moving_axis = np.asarray(moving_axis, dtype=float)
+    moving_axis /= np.linalg.norm(moving_axis)
+    for d in (-10.0, -5.0, 0.0, 5.0, 10.0):
+        mat = np.eye(4)
+        mat[:3, :3] = neutral_rot
+        mat[:3, 3] = np.asarray(base_pos) + moving_axis * d
+        assert corrector.add_calibration_sample(mat)
+    corrector.calibrate()
+
+
+# キャリブレーション時の頭部姿勢と移動方向の組み合わせ（カメラの設置状況の違いを表す）
+CALIBRATION_SETUPS = [
+    pytest.param(rot_y(30.0), rot_y(30.0)[:, 2], id="Camera to the side"),
+    pytest.param(rot_x(-20.0) @ rot_y(10.0), (rot_x(-20.0) @ rot_y(10.0))[:, 2], id="Camera above, looking down"),
+    pytest.param(rot_y(15.0) @ rot_z(3.0), [0.3, -0.2, 1.0], id="Moving axis differs from head forward"),
+]
+
+
+@pytest.mark.parametrize("neutral_rot, moving_axis", CALIBRATION_SETUPS)
+def test_rotation_output_is_relative_to_neutral_head(corrector, neutral_rot, moving_axis):
+    """
+    回転出力が、キャリブレーション時の頭部姿勢を基準とした（頭部座標系での）相対回転になるか検証する。
+    カメラの設置角や移動方向には依存しない。
+    """
+    # 準備
+    perform_calibration(corrector, neutral_rot, moving_axis, [-10.0, 5.0, -55.0])
+    yaw, pitch, roll = 25.0, -10.0, 8.0
+    input_mat = np.eye(4)
+    input_mat[:3, :3] = neutral_rot @ rot_y(yaw) @ rot_x(pitch) @ rot_z(roll)
+    input_mat[:3, 3] = [-10.0, 5.0, -55.0]
+
+    # 実行
+    pose = corrector.correct(input_mat)
+
+    # 検証: opentrack 向けに符号を反転した相対回転が出力される
+    assert pose[YAW] == pytest.approx(-yaw, abs=1e-3)
+    assert pose[PITCH] == pytest.approx(-pitch, abs=1e-3)
+    assert pose[ROLL] == pytest.approx(-roll, abs=1e-3)
+
+
+@pytest.mark.parametrize("neutral_rot, moving_axis", CALIBRATION_SETUPS)
+def test_save_load_state_with_tilted_setup(corrector, neutral_rot, moving_axis):
+    """カメラが斜めに設置されている場合も、保存・復元したキャリブレーションで同じ出力になるか検証する。"""
+    # 準備: キャリブレーションし、状態を別のインスタンスに復元（Config の保存・読み込みを模倣）
+    corrector.set_distance_scale(1.5)
+    perform_calibration(corrector, neutral_rot, moving_axis, [-10.0, 5.0, -55.0])
+    restored = PoseCorrector()
+    restored.set_distance_scale(corrector.get_distance_scale())
+    restored.set_calibrated_data(corrector.get_cam_pose(), corrector.get_offset_angles())
+    input_mat = np.eye(4)
+    input_mat[:3, :3] = neutral_rot @ rot_y(-20.0) @ rot_x(12.0) @ rot_z(-6.0)
+    input_mat[:3, 3] = [3.0, -4.0, -48.0]
+
+    # 実行
+    pose_orig = corrector.correct(input_mat)
+    pose_restored = restored.correct(input_mat)
+
+    # 検証: オイラー角を経由して復元するため、float32 の丸め誤差を考慮した許容誤差とする
+    np.testing.assert_allclose(pose_orig, pose_restored, atol=1e-4)
+
+
 def test_opentrack_coordinate_conversion(corrector):
     """
     Opentrack用の座標系変換（符号反転など）が正しく行われているか検証する。
@@ -261,6 +409,38 @@ def test_opentrack_coordinate_conversion(corrector):
     assert pose[X] == pytest.approx(mp_x, abs=1e-6)
     assert pose[Y] == pytest.approx(mp_y, abs=1e-6)
     assert pose[Z] == pytest.approx(-mp_z, abs=1e-6)
-    assert pose[YAW] == pytest.approx(-mp_yaw, abs=1e-6)
-    assert pose[PITCH] == pytest.approx(-mp_pitch, abs=1e-6)
-    assert pose[ROLL] == pytest.approx(-mp_roll, abs=1e-6)
+    # 角度は float32 の行列演算から算出されるため、丸め誤差を考慮した許容誤差とする
+    assert pose[YAW] == pytest.approx(-mp_yaw, abs=1e-4)
+    assert pose[PITCH] == pytest.approx(-mp_pitch, abs=1e-4)
+    assert pose[ROLL] == pytest.approx(-mp_roll, abs=1e-4)
+
+
+@pytest.mark.parametrize("cam_yaw", [0.0, 30.0, -30.0])
+def test_correct_no_pitch_crosstalk_on_yaw_and_roll(corrector, cam_yaw):
+    """
+    横を向いて首を傾けた（Yaw + Roll）ときに、偽の Pitch が出力されないことを検証する。
+    カメラを横に設置した場合（キャリブレーション時の顔がカメラに対して斜め）も含む。
+    """
+    # 準備: 頭をカメラに対して cam_yaw だけ斜めに向けたまま、頭の正面方向へ前後移動してキャリブレーション
+    neutral_rot = rot_y(cam_yaw)
+    forward = neutral_rot[:, 2]
+    base_pos = np.array([-25.0, 0.0, -45.0])
+    for i in range(3):
+        mat = np.eye(4)
+        mat[:3, :3] = neutral_rot
+        mat[:3, 3] = base_pos + forward * 10.0 * i
+        assert corrector.add_calibration_sample(mat)
+    corrector.calibrate()
+
+    # 準備: 中立姿勢から頭のローカル軸で Yaw 45° -> Roll 20° 回転
+    input_mat = np.eye(4)
+    input_mat[:3, :3] = neutral_rot @ rot_y(45.0) @ rot_z(20.0)
+    input_mat[:3, 3] = base_pos
+
+    # 実行
+    pose = corrector.correct(input_mat)
+
+    # 検証: opentrack 向けに符号を反転した Yaw / Roll のみが出力される
+    assert pose[YAW] == pytest.approx(-45.0, abs=1e-4)
+    assert pose[PITCH] == pytest.approx(0.0, abs=1e-4)
+    assert pose[ROLL] == pytest.approx(-20.0, abs=1e-4)
