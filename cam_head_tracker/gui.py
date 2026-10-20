@@ -70,10 +70,11 @@ class HelpTooltip:
         widget.bind("<Leave>", self._on_leave, add="+")
 
         # ツールチップは transient にすると Windows で表示されなくなるため、
-        # メインウィンドウの移動・最小化・復元に合わせた処理はイベントで行う。
+        # メインウィンドウの移動・最小化・復元・フォーカス取得に合わせた処理はイベントで行う。
         self._toplevel.bind("<Configure>", self._on_configure_toplevel, add="+")
         self._toplevel.bind("<Unmap>", self._on_unmap_toplevel, add="+")
         self._toplevel.bind("<Map>", self._on_map_toplevel, add="+")
+        self._toplevel.bind("<FocusIn>", self._on_focus_in_toplevel, add="+")
 
     def is_visible(self) -> bool:
         return self._window is not None
@@ -100,6 +101,14 @@ class HelpTooltip:
         # 子ウィジェットのイベントも届くため、メインウィンドウ自身のイベントだけを処理する
         if event.widget is self._toplevel and self._window:
             self._move_to_widget(self._window)
+
+    def _on_focus_in_toplevel(self, _):
+        # ツールチップはメインウィンドウに所有されていないため、別のアプリから戻ってメインウィンドウが
+        # 前面に出るとその裏に隠れる。表示中であれば前面に出し直す。
+        # Windows の Tk では <Activate> が届かないため、フォーカスの取得を契機にする。
+        # フォーカスはメインウィンドウ内の子ウィジェットに届くため、イベントの発生元では絞り込まない。
+        if self._window:
+            self._window.lift()
 
     def _on_unmap_toplevel(self, event: tk.Event):
         # メインウィンドウの最小化時は閉じる（固定状態は維持する）
