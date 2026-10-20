@@ -60,9 +60,9 @@ def test_rotation_round_trip_matrix_stability(yaw, pitch, roll):
         pytest.param([[0, -1, 0], [1, 0, 0], [0, 0, 1]], (0.0, 0.0, 90.0), id="Roll 90 deg"),
         pytest.param(
             [
-                [0.4330127018922193, -0.75, 0.5],
-                [0.75, 0.25, -0.6123724356957945],
-                [-0.5, 0.6123724356957945, 0.6123724356957945],
+                [0.7391989197401166, -0.5732233047033631, 0.35355339059327373],
+                [0.6123724356957946, 0.35355339059327384, -0.7071067811865476],
+                [0.28033008588991065, 0.7391989197401166, 0.6123724356957946],
             ],
             (30.0, 45.0, 60.0),
             id="Complex case (Y:30, P:45, R:60)",
@@ -72,6 +72,49 @@ def test_rotation_round_trip_matrix_stability(yaw, pitch, roll):
 def test_known_rotation_values(mat, angles):
     """既知の回転行列とオイラー角の対応関係を検証する。"""
     assert rotation_matrix_to_euler_angles(np.array(mat)) == pytest.approx(angles, abs=1e-6)
+
+
+def rot_x(deg):
+    """X軸（Pitch）周りの基本回転行列"""
+    a = math.radians(deg)
+    return np.array([[1, 0, 0], [0, math.cos(a), -math.sin(a)], [0, math.sin(a), math.cos(a)]])
+
+
+def rot_y(deg):
+    """Y軸（Yaw）周りの基本回転行列"""
+    a = math.radians(deg)
+    return np.array([[math.cos(a), 0, math.sin(a)], [0, 1, 0], [-math.sin(a), 0, math.cos(a)]])
+
+
+def rot_z(deg):
+    """Z軸（Roll）周りの基本回転行列"""
+    a = math.radians(deg)
+    return np.array([[math.cos(a), -math.sin(a), 0], [math.sin(a), math.cos(a), 0], [0, 0, 1]])
+
+
+@pytest.mark.parametrize(
+    "yaw, pitch, roll",
+    [
+        pytest.param(45.0, 0.0, 20.0, id="Yaw + Roll"),
+        pytest.param(0.0, 20.0, 20.0, id="Pitch + Roll"),
+        pytest.param(30.0, 15.0, 15.0, id="Yaw + Pitch + Roll"),
+        pytest.param(-60.0, -10.0, 10.0, id="Large yaw with mixed signs"),
+        pytest.param(80.0, 0.0, -5.0, id="Near yaw 90 deg"),
+    ],
+)
+def test_decomposition_order_is_yaw_pitch_roll(yaw, pitch, roll):
+    """
+    Yaw -> Pitch -> Roll の順に回転した姿勢が、同じ角度に分解されるか検証する。
+    分解順序が異なると、Roll を含む組み合わせで他の軸に偽の角度が混入する。
+    """
+    # 準備: 基本回転を Yaw -> Pitch -> Roll の順に合成
+    matrix = rot_y(yaw) @ rot_x(pitch) @ rot_z(roll)
+
+    # 実行
+    result = rotation_matrix_to_euler_angles(matrix)
+
+    # 検証
+    assert result == pytest.approx((yaw, pitch, roll), abs=1e-6)
 
 
 # -----------------------------------------------------------------------------
@@ -261,6 +304,38 @@ def test_opentrack_coordinate_conversion(corrector):
     assert pose[X] == pytest.approx(mp_x, abs=1e-6)
     assert pose[Y] == pytest.approx(mp_y, abs=1e-6)
     assert pose[Z] == pytest.approx(-mp_z, abs=1e-6)
-    assert pose[YAW] == pytest.approx(-mp_yaw, abs=1e-6)
-    assert pose[PITCH] == pytest.approx(-mp_pitch, abs=1e-6)
-    assert pose[ROLL] == pytest.approx(-mp_roll, abs=1e-6)
+    # 角度は float32 の行列演算から算出されるため、丸め誤差を考慮した許容誤差とする
+    assert pose[YAW] == pytest.approx(-mp_yaw, abs=1e-4)
+    assert pose[PITCH] == pytest.approx(-mp_pitch, abs=1e-4)
+    assert pose[ROLL] == pytest.approx(-mp_roll, abs=1e-4)
+
+
+@pytest.mark.parametrize("cam_yaw", [0.0, 30.0, -30.0])
+def test_correct_no_pitch_crosstalk_on_yaw_and_roll(corrector, cam_yaw):
+    """
+    横を向いて首を傾けた（Yaw + Roll）ときに、偽の Pitch が出力されないことを検証する。
+    カメラを横に設置した場合（キャリブレーション時の顔がカメラに対して斜め）も含む。
+    """
+    # 準備: 頭をカメラに対して cam_yaw だけ斜めに向けたまま、頭の正面方向へ前後移動してキャリブレーション
+    neutral_rot = rot_y(cam_yaw)
+    forward = neutral_rot[:, 2]
+    base_pos = np.array([-25.0, 0.0, -45.0])
+    for i in range(3):
+        mat = np.eye(4)
+        mat[:3, :3] = neutral_rot
+        mat[:3, 3] = base_pos + forward * 10.0 * i
+        assert corrector.add_calibration_sample(mat)
+    corrector.calibrate()
+
+    # 準備: 中立姿勢から頭のローカル軸で Yaw 45° -> Roll 20° 回転
+    input_mat = np.eye(4)
+    input_mat[:3, :3] = neutral_rot @ rot_y(45.0) @ rot_z(20.0)
+    input_mat[:3, 3] = base_pos
+
+    # 実行
+    pose = corrector.correct(input_mat)
+
+    # 検証: opentrack 向けに符号を反転した Yaw / Roll のみが出力される
+    assert pose[YAW] == pytest.approx(-45.0, abs=1e-4)
+    assert pose[PITCH] == pytest.approx(0.0, abs=1e-4)
+    assert pose[ROLL] == pytest.approx(-20.0, abs=1e-4)

@@ -20,18 +20,20 @@ Landmark = tuple[float, float]
 def rotation_matrix_to_euler_angles(matrix: np.ndarray) -> Angles:
     """
     3x3 回転行列をオイラー角（Yaw, Pitch, Roll）に変換します。単位は度 (degree) です。
-    ZYX順序に基づいて分解します。
+    R = Ry(yaw) @ Rx(pitch) @ Rz(roll) として分解します。
+    これは Yaw -> Pitch -> Roll の順に回転する Tait-Bryan 角で、opentrack の解釈と一致します。
+    ジンバルロックは Pitch ±90° で発生します。
     """
-    pitch = math.degrees(math.atan2(matrix[2, 1], matrix[2, 2]))
-    yaw = math.degrees(math.atan2(-matrix[2, 0], math.sqrt(matrix[0, 0] ** 2 + matrix[1, 0] ** 2)))
-    roll = math.degrees(math.atan2(matrix[1, 0], matrix[0, 0]))
+    yaw = math.degrees(math.atan2(matrix[0, 2], matrix[2, 2]))
+    pitch = math.degrees(math.atan2(-matrix[1, 2], math.sqrt(matrix[1, 0] ** 2 + matrix[1, 1] ** 2)))
+    roll = math.degrees(math.atan2(matrix[1, 0], matrix[1, 1]))
     return yaw, pitch, roll
 
 
 def euler_angles_to_rotation_matrix(yaw_deg: float, pitch_deg: float, roll_deg: float) -> np.ndarray:
     """
     オイラー角（Yaw, Pitch, Roll）を 3x3 回転行列に変換します。単位は度 (degree) です。
-    ZYX順序で回転行列を合成します。
+    R = Ry(yaw) @ Rx(pitch) @ Rz(roll) として合成します（rotation_matrix_to_euler_angles の逆変換）。
     """
     p = math.radians(pitch_deg)
     y = math.radians(yaw_deg)
@@ -58,8 +60,8 @@ def euler_angles_to_rotation_matrix(yaw_deg: float, pitch_deg: float, roll_deg: 
             [0, 0, 1],
         ]
     )
-    # 適用順序: Rx -> Ry -> Rz
-    return r_z @ (r_y @ r_x)
+    # 頭部のローカル軸で見た回転順序: Yaw(Y軸) -> Pitch(X軸) -> Roll(Z軸)
+    return r_y @ (r_x @ r_z)
 
 
 @dataclass(slots=True)
