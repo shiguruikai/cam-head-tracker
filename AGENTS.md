@@ -1,60 +1,40 @@
-# CamHeadTracker プロジェクト
+# CamHeadTracker
 
-## プロジェクト概要
+Web カメラで頭部の動きを 6DoF（X、Y、Z、ヨー、ピッチ、ロール）でトラッキングし、UDP で送信する Windows 向けアプリ。
 
-CamHeadTracker は、Windows 向けのカメラベースのヘッドトラッキングアプリケーションです。
-Web カメラを使用して、ユーザーの頭部の動きを 6DoF（X、Y、Z、ヨー、ピッチ、ロール）でトラッキングし、そのデータを UDP で送信します。
-
-## 技術スタック
-
-- Python (v3.13), `uv`, Tkinter, NumPy, Pillow, pytest, Ruff, PyInstaller
+- Python 3.13、uv、Tkinter、NumPy、Pillow、pytest、Ruff、PyInstaller
 - 頭の姿勢推定: MediaPipe Face Landmarker
-- カメラ入力: `ffmpeg.exe`（[Dockerfile](ffmpeg-builder/Dockerfile) による独自ビルド版）
+- カメラ入力: 同梱の `ffmpeg.exe`（[Dockerfile](ffmpeg-builder/Dockerfile) による独自ビルド版）
 - CI: GitHub Actions
 
 ## コマンド
 
-- **アプリ実行**: `task run`
-- **クリーンビルド**: `task build`（出力先: `dist/CamHeadTracker/`）
-- **リント**: `task lint`
-- **フォーマット**: `task format`
-- **テスト**: `task test`
+`task setup`（依存関係のインストール）、`task run`、`task lint`、`task format`、`task test`、`task build`（クリーンビルド。出力先は `dist/CamHeadTracker/`）
 
-## コーディングスタイル
+## 規約
 
-- 既存のコーディングスタイルに従うこと。
-- **ソース中のコメントは日本語**で記述せよ。
-- **UIおよびログ出力のメッセージは英語**で記述せよ。
+- UI とログのメッセージは英語で書く。
+- 新しい依存関係が必要なときは、理由をユーザーに説明する。
+- 旧バージョンの `config.ini` との互換性は考慮しない（移行処理もアプリ上の通知も不要）。
+- 破壊的変更は事前に警告する。仕様が曖昧なときは、推測で変更せずユーザーに確認する。
 
-## テストルール
+## テスト
 
-- 新機能の追加や重要なロジックの変更を行う場合は、対応するテストコードを `tests` ディレクトリに追加・更新せよ。
-- AAA (Arrange, Act, Assert) パターンに従い、準備・実行・検証を明示せよ。
-- 同じロジックでデータのみが異なる場合は `@pytest.mark.parametrize` を活用せよ。
-- インスタンスの生成など、共通の準備処理は `@pytest.fixture` にまとめよ。
-- 浮動小数点の比較には `pytest.approx` または `np.testing.assert_allclose` を使用し、適切な許容誤差を設定せよ。
-- 数学的ロジックについては、エッジケースやコーナーケースを網羅せよ。
+- 新機能や重要なロジックの変更には、`tests/` のテストを追加・更新する。
+- AAA パターンで書き、準備・実行・検証をコメントで明示する。データだけが違う場合は `@pytest.mark.parametrize`、共通の準備は `@pytest.fixture` を使う。
+- 浮動小数点は `pytest.approx` か `np.testing.assert_allclose` で、適切な許容誤差を設定して比較する。
+- 数学的なロジックは、エッジケースやコーナーケースも網羅する。
 
-## 依存関係
+## Git
 
-- 新しい依存関係が必要な場合は、その理由をユーザーに説明せよ。
+- コミット前に `task lint format test build` を成功させる。
+- コミットメッセージは Conventional Commits（`<type>: <簡潔な日本語>`）で書く。type は `build`（uv、PyInstaller、FFmpeg のビルドなど）、`ci`、`docs`（AI エージェントの設定を含む）、`feat`、`fix`、`perf`、`refactor`、`test` のいずれか。
+- ユーザーの明示的な指示がない限り、`git commit` や `git push` の前に許可を得る。
+- PR は GitHub 上で Squash and merge でマージする。
 
-## Gitルール
+## 言語プロトコル
 
-- **事前検証**: コミット前に必ず `task lint format test build` を実行し成功させること。
-- **コミットメッセージ**: `Conventional Commits` 形式（`<type>: <description>`）に準拠し、`<description>` は簡潔な日本語で記述すること。
-  - **type**:
-    - **build**: ビルドシステムまたは外部依存関係の変更（uv, PyInstaller, FFmpeg ビルドなど）
-    - **ci**: CI 設定の変更（GitHub Actions など）
-    - **docs**: ドキュメントやAIエージェント設定の変更
-    - **feat**: 新機能の追加
-    - **fix**: バグ修正
-    - **perf**: パフォーマンスを向上させる変更
-    - **refactor**: 機能追加もバグ修正も行わないコード変更
-    - **test**: テストの追加または既存テストの修正
-- **ユーザー確認**: ユーザーの明示的な指示がない限り、自動で `git commit` や `git push` を行わず事前に許可を得ること。
-
-## 注意事項
-
-- 破壊的変更を行う場合は、必ず事前に警告せよ。
-- 仕様が不明瞭な場合や曖昧な点がある場合は、推測に基づいて変更を行う前に、ユーザーに確認または説明を求めよ。
+- Think and reason in English.
+- Write files under `.claude/` in English.
+- ソースコメント、ドキュメントは日本語で記述する。
+- ユーザーには日本語で応答・報告する。
