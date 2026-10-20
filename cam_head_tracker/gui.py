@@ -210,8 +210,8 @@ class CamHeadTrackerApp(tk.Frame):
         )
         self.distance_scale.pack(fill="x")
 
-        # キャリブレーション開始ボタン
-        self.cal_btn = ttk.Button(cal_labelframe, text="Start Calibration", command=self.start_calibration)
+        # キャリブレーションの開始・停止・リセットボタン
+        self.cal_btn = ttk.Button(cal_labelframe, text="Start Calibration", command=self.onclick_cal_btn)
         self.cal_btn.pack(fill="x", pady=(20, 0))
 
         # キャリブレーションプログレスバー
@@ -527,10 +527,18 @@ class CamHeadTrackerApp(tk.Frame):
     def update_calibration_ui(self):
         if self.is_calibrating:
             self.cal_btn.config(text="Stop Calibration")
+        elif self.corrector.is_calibrated():
+            self.cal_btn.config(text="Reset Calibration")
         else:
             self.cal_btn.config(text="Start Calibration")
 
         self.distance_scale_var.set(self.corrector.get_distance_scale())
+
+        # キャリブレーション結果は距離スケールに依存するため、実施中と済みの間はスライダーを操作不可にする
+        if self.is_calibrating or self.corrector.is_calibrated():
+            self.distance_scale.state(["disabled"])
+        else:
+            self.distance_scale.state(["!disabled"])
 
         if self.corrector.is_calibrated():
             self.cal_pbar_var.set(self.cal_pbar["maximum"])
@@ -579,11 +587,17 @@ Offset Roll    --.- °
 
         self.ui_executor.set_interval_ms(100)
 
-    def start_calibration(self):
-        self.corrector.reset_calibration()
-        self.corrector.set_distance_scale(self.distance_scale_var.get())
+    def onclick_cal_btn(self):
+        if self.is_calibrating or self.corrector.is_calibrated():
+            # 実施中なら停止、済みならリセットし、いずれも未実施の状態に戻す
+            self.is_calibrating = False
+            self.corrector.reset_calibration()
+        else:
+            # 未実施なら、現在の距離スケールでキャリブレーションを開始する
+            self.corrector.reset_calibration()
+            self.corrector.set_distance_scale(self.distance_scale_var.get())
+            self.is_calibrating = True
         self.cal_pbar_var.set(0)
-        self.is_calibrating = not self.is_calibrating
         self.update_calibration_ui()
 
     def setup_udp_client(self):

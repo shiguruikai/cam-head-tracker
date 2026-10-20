@@ -237,21 +237,63 @@ def test_calibration_tilted_camera(corrector):
     assert pose[ROLL] == pytest.approx(0.0, abs=1e-6)
 
 
-def test_distance_scaling(corrector):
-    """距離スケール設定が出力に反映されるか検証する。"""
-    perform_standard_calibration(corrector)
-
-    # スケールを2倍に設定
+def test_distance_scale_applies_to_depth_only(corrector):
+    """距離スケールがカメラ座標系の Z（奥行き）にのみ適用されるか検証する。"""
+    # 準備: スケール2倍でキャリブレーション
     scale = 2.0
     corrector.set_distance_scale(scale)
+    perform_standard_calibration(corrector)
+    input_mat = create_transform_matrix(5.0, 3.0, -50.0)
 
-    input_x = 5.0
-    input_mat = create_transform_matrix(input_x, 0, 0)
-
+    # 実行
     pose = corrector.correct(input_mat)
 
-    # 入力5.0 * スケール2.0 = 10.0 になるはず
-    assert pose[X] == pytest.approx(input_x * scale, abs=1e-6)
+    # 検証: X, Y はそのまま、Z のみ2倍（opentrack 向けに符号反転）
+    assert pose[X] == pytest.approx(5.0, abs=1e-6)
+    assert pose[Y] == pytest.approx(3.0, abs=1e-6)
+    assert pose[Z] == pytest.approx(50.0 * scale, abs=1e-6)
+
+
+# MediaPipe の推定奥行き / 真の奥行き（例: 垂直画角 43° のカメラを 63° と仮定した場合）
+DEPTH_RATIO = 0.65
+
+
+def mediapipe_estimated_matrix(rotation, true_position):
+    """画角の仮定の違いにより、奥行きだけが DEPTH_RATIO 倍に縮んだ MediaPipe の推定結果を模擬する。"""
+    mat = np.eye(4)
+    mat[:3, :3] = rotation
+    mat[:3, 3] = np.asarray(true_position) * [1.0, 1.0, DEPTH_RATIO]
+    return mat
+
+
+@pytest.mark.parametrize("cam_yaw", [20.0, 40.0, -30.0])
+def test_calibration_with_depth_compressed_estimate(corrector, cam_yaw):
+    """
+    奥行きだけが縮んで推定される状況で、斜めに設置したカメラでも正しく補正できるか検証する。
+    距離スケールを X, Y, Z 一様にかけると、移動軸が歪んでカメラ角度と軸間の混入が生じる。
+    """
+    # 準備: 頭をカメラに対して cam_yaw だけ斜めに向けたまま、頭の正面方向へ前後移動してキャリブレーション
+    neutral_rot = rot_y(cam_yaw)
+    lateral, up, forward = neutral_rot[:, 0], neutral_rot[:, 1], neutral_rot[:, 2]
+    base_pos = np.array([-10.0, -5.0, -60.0])
+    corrector.set_distance_scale(1.0 / DEPTH_RATIO)
+    for d in (-10.0, -5.0, 0.0, 5.0, 10.0):
+        assert corrector.add_calibration_sample(mediapipe_estimated_matrix(neutral_rot, base_pos + forward * d))
+    corrector.calibrate()
+    base_pose = np.array(corrector.correct(mediapipe_estimated_matrix(neutral_rot, base_pos))[:3])
+
+    # 実行: 頭の向きはそのまま、横・上・前へ 10cm ずつ平行移動
+    def moved(direction):
+        mat = mediapipe_estimated_matrix(neutral_rot, base_pos + direction * 10.0)
+        return np.array(corrector.correct(mat)[:3]) - base_pose
+
+    # 検証: 各移動が対応する1軸にだけ現れる（Z は opentrack 向けに符号反転）
+    np.testing.assert_allclose(moved(lateral), [10.0, 0.0, 0.0], atol=1e-3)
+    np.testing.assert_allclose(moved(up), [0.0, 10.0, 0.0], atol=1e-3)
+    np.testing.assert_allclose(moved(forward), [0.0, 0.0, -10.0], atol=1e-3)
+
+    # 検証: カメラの設置角（頭に対する向き）が正しく推定される
+    assert corrector.get_cam_pose()[YAW] == pytest.approx(-cam_yaw, abs=1e-3)
 
 
 def test_save_load_state(corrector):

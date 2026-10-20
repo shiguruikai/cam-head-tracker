@@ -169,8 +169,20 @@ class PoseCorrector:
         return self._distance_scale
 
     def set_distance_scale(self, scale: float):
-        """移動距離の倍率を設定します。"""
+        """
+        奥行き（カメラ座標系の Z）の倍率を設定します。
+
+        MediaPipe は垂直画角 63° のカメラを仮定して位置を推定するため、実際のカメラとの画角差によって
+        奥行きの推定値だけが一定の比率でずれる（X, Y は仮定した画角に依存しない）。この倍率でそのずれを補正する。
+        キャリブレーション結果はこの倍率に依存するため、変更した場合は再キャリブレーションが必要。
+        """
         self._distance_scale = scale
+
+    def _scale_position(self, position: np.ndarray) -> np.ndarray:
+        """カメラ座標系の位置ベクトルの Z（奥行き）にのみ倍率を適用したコピーを返します。"""
+        scaled = position.copy()
+        scaled[Z] *= self._distance_scale
+        return scaled
 
     def get_calibration_sample_len(self) -> int:
         """現在蓄積されているサンプルデータ数を返します。"""
@@ -216,8 +228,8 @@ class PoseCorrector:
         """
         mat = matrix.copy()
 
-        # X, Y, Z にスケール適用
-        mat[:3, 3] *= self._distance_scale
+        # Z（奥行き）にのみスケール適用
+        mat[:3, 3] = self._scale_position(mat[:3, 3])
 
         if self._calibration_samples:
             z = mat[2, 3]
@@ -314,8 +326,8 @@ class PoseCorrector:
         :param matrix: MediaPipeから得られた生の 4x4 同次変換行列
         :return: 補正済みの姿勢データ (x, y, z, yaw, pitch, roll)
         """
-        # カメラ座標系における位置ベクトル
-        raw_pos = matrix[:3, 3] * self._distance_scale
+        # カメラ座標系における位置ベクトル（奥行きにのみスケール適用）
+        raw_pos = self._scale_position(matrix[:3, 3])
         # カメラ座標系における回転行列
         raw_rot = matrix[:3, :3]
 
