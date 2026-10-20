@@ -411,6 +411,24 @@ def test_stop_calibration_returns_to_uncalibrated(root, make_app):
     assert app.cal_pbar_var.get() == 0
 
 
+def test_stop_calibration_discards_pending_progress_update(root, make_app):
+    """
+    サンプルの追加直後（プログレスバーの更新が予約されたまま UI に反映される前）に Stop を押しても、
+    予約されていた古い進捗が表示されないことを検証する。
+    """
+    # 準備: サンプルを追加し、予約された UI 更新が実行される前に Stop を押す
+    app = make_app()
+    app.onclick_cal_btn()
+    feed_samples(app, 6)
+    app.onclick_cal_btn()
+
+    # 実行: 予約されていた UI 更新を実行
+    process_ui_tasks(root)
+
+    # 検証
+    assert app.cal_pbar_var.get() == 0
+
+
 def test_completed_calibration_shows_reset_and_keeps_slider_locked(root, make_app):
     """規定数のサンプルで計測が完了すると Reset ボタンになり、スライダーがロックされたままになることを検証する。"""
     # 準備

@@ -574,7 +574,8 @@ class CamHeadTrackerApp(tk.Frame):
                     sample_len = self.corrector.get_calibration_sample_len()
 
                     # プログレスバーを更新
-                    self.ui_executor.schedule("cal_pbar_var.set", self.cal_pbar_var.set, sample_len)
+                    # 予約時の値を渡すと、反映前に停止された場合に古い値が残るため、実行時の状態を反映させる。
+                    self.ui_executor.schedule("update_cal_pbar", self.update_cal_pbar)
 
                     # サンプルデータ数が規定数を超えたらキャリブレーションを実行
                     if sample_len >= N_CALIBRATION_SAMPLES:
@@ -665,9 +666,9 @@ class CamHeadTrackerApp(tk.Frame):
         else:
             self.distance_scale.state(["!disabled"])
 
-        if self.corrector.is_calibrated():
-            self.cal_pbar_var.set(self.cal_pbar["maximum"])
+        self.update_cal_pbar()
 
+        if self.corrector.is_calibrated():
             cam_pose = self.corrector.get_cam_pose()
             offset_yaw, offset_pitch, offset_roll = self.corrector.get_offset_angles()
 
@@ -685,8 +686,6 @@ Offset Roll   {offset_roll:>5.1f} °
 """.strip()
             )
         else:
-            self.cal_pbar_var.set(0)
-
             self.cal_result_lbl_var.set(
                 """
 Camera X       --.- cm
@@ -700,6 +699,15 @@ Offset Pitch   --.- °
 Offset Roll    --.- °
 """.strip()
             )
+
+    def update_cal_pbar(self):
+        """現在のキャリブレーションの状態をプログレスバーに反映します。"""
+        if self.corrector.is_calibrated():
+            self.cal_pbar_var.set(self.cal_pbar["maximum"])
+        elif self.is_calibrating:
+            self.cal_pbar_var.set(self.corrector.get_calibration_sample_len())
+        else:
+            self.cal_pbar_var.set(0)
 
     def show_preview_canvas(self):
         self.preview_canvas.pack(fill="both", expand=True, padx=(10, 0))
@@ -722,7 +730,6 @@ Offset Roll    --.- °
             self.corrector.reset_calibration()
             self.corrector.set_distance_scale(self.distance_scale_var.get())
             self.is_calibrating = True
-        self.cal_pbar_var.set(0)
         self.update_calibration_ui()
 
     def setup_udp_client(self):
