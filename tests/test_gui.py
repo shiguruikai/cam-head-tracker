@@ -4,10 +4,14 @@ import time
 import tkinter as tk
 from ctypes import wintypes
 from tkinter import ttk
+from typing import cast
 
+import numpy as np
 import pytest
 
+from cam_head_tracker import gui
 from cam_head_tracker.gui import HelpTooltip
+from cam_head_tracker.tracker import TrackerResult
 
 
 @pytest.fixture(scope="session")
@@ -28,6 +32,11 @@ def callback_errors(root):
     yield errors
     root.report_callback_exception = original
     assert not errors
+
+
+# -----------------------------------------------------------------------------
+# 1. HelpTooltip のテスト
+# -----------------------------------------------------------------------------
 
 
 @pytest.fixture
@@ -271,3 +280,183 @@ def test_pinned_tooltip_stays_in_front_after_returning_from_other_window(root, m
         assert is_window_above(tip_window, window)
     finally:
         other.destroy()
+
+
+# -----------------------------------------------------------------------------
+# 2. CamHeadTrackerApp（キャリブレーションの UI）のテスト
+# -----------------------------------------------------------------------------
+
+# トラッキングループに渡すダミーのカメラ画像
+DUMMY_FRAME = np.zeros((4, 4, 3), dtype=np.uint8)
+
+
+class FakeTracker:
+    """MediaPipe の代わりに、設定した同次変換行列をそのまま返すトラッカー"""
+
+    def __init__(self):
+        self.matrix: np.ndarray | None = None
+
+    def estimate(self, frame: np.ndarray, timestamp_ms: int) -> TrackerResult | None:
+        return TrackerResult(matrix=self.matrix, landmarks=[]) if self.matrix is not None else None
+
+    def close(self) -> None:
+        pass
+
+
+@pytest.fixture
+def make_app(root, tmp_path, monkeypatch):
+    """カメラ・MediaPipe・UDP を使わない CamHeadTrackerApp を生成するファクトリ（設定ファイルは一時ディレクトリ）"""
+    monkeypatch.setattr(gui, "MediapipeTracker", FakeTracker)
+    monkeypatch.setattr(gui, "get_camera_device_names", lambda: [])
+    monkeypatch.setattr(gui.CamHeadTrackerApp, "setup_udp_client", lambda self: None)
+    created = []
+
+    def factory() -> gui.CamHeadTrackerApp:
+        # セッション共有の Tk とは別のウィンドウにアプリを構築する（ウィンドウ操作のメソッドは Tk と共通）
+        window = tk.Toplevel(root)
+        window.withdraw()
+        app = gui.CamHeadTrackerApp(cast(tk.Tk, window), config_paths=[tmp_path / "config.ini"])
+        app.should_preview = False
+        created.append((window, app))
+        return app
+
+    yield factory
+    for window, app in created:
+        app.close()
+        window.destroy()
+
+
+def process_ui_tasks(root):
+    """TkUIExecutor の定期処理（15ms 間隔）に予約された UI 更新が実行されるまで、イベントを処理する。"""
+    end = time.perf_counter() + 0.1
+    while time.perf_counter() < end:
+        root.update()
+        time.sleep(0.005)
+
+
+def feed_samples(app, count, start=0):
+    """カメラから 1cm ずつ遠ざかる顔の検出結果を、トラッキングループに流し込む。"""
+    for i in range(start, start + count):
+        matrix = np.eye(4, dtype=np.float32)
+        matrix[:3, 3] = [0.0, 0.0, -45.0 - i]
+        app.tracker.matrix = matrix
+        app.track_loop_inner(DUMMY_FRAME, i)
+
+
+def complete_calibration(root, app):
+    app.onclick_cal_btn()
+    feed_samples(app, gui.N_CALIBRATION_SAMPLES)
+    process_ui_tasks(root)
+
+
+def test_calibration_ui_initial_state(make_app):
+    """起動直後は未実施の状態で、スライダーを操作できることを検証する。"""
+    # 実行
+    app = make_app()
+
+    # 検証
+    assert app.cal_btn.cget("text") == "Start Calibration"
+    assert not app.distance_scale.instate(["disabled"])
+    assert not app.corrector.is_calibrated()
+
+
+def test_start_calibration_locks_slider(make_app):
+    """計測を開始すると Stop ボタンになり、スライダーがロックされ、スライダーの値が適用されることを検証する。"""
+    # 準備
+    app = make_app()
+    app.distance_scale_var.set(1.5)
+
+    # 実行
+    app.onclick_cal_btn()
+
+    # 検証
+    assert app.cal_btn.cget("text") == "Stop Calibration"
+    assert app.distance_scale.instate(["disabled"])
+    assert app.is_calibrating
+    assert app.corrector.get_distance_scale() == pytest.approx(1.5)
+
+
+def test_progress_bar_shows_sample_count_during_calibration(root, make_app):
+    """計測中はプログレスバーに取得済みのサンプル数が表示されることを検証する。"""
+    # 準備
+    app = make_app()
+    app.onclick_cal_btn()
+
+    # 実行
+    feed_samples(app, 5)
+    process_ui_tasks(root)
+
+    # 検証
+    assert app.cal_pbar_var.get() == 5
+
+
+def test_stop_calibration_returns_to_uncalibrated(root, make_app):
+    """計測中に Stop を押すと、未実施の状態に戻り、スライダーのロックが解除されることを検証する。"""
+    # 準備
+    app = make_app()
+    app.onclick_cal_btn()
+    feed_samples(app, 5)
+    process_ui_tasks(root)
+
+    # 実行
+    app.onclick_cal_btn()
+    process_ui_tasks(root)
+
+    # 検証
+    assert app.cal_btn.cget("text") == "Start Calibration"
+    assert not app.distance_scale.instate(["disabled"])
+    assert not app.is_calibrating
+    assert not app.corrector.is_calibrated()
+    assert app.corrector.get_calibration_sample_len() == 0
+    assert app.cal_pbar_var.get() == 0
+
+
+def test_completed_calibration_shows_reset_and_keeps_slider_locked(root, make_app):
+    """規定数のサンプルで計測が完了すると Reset ボタンになり、スライダーがロックされたままになることを検証する。"""
+    # 準備
+    app = make_app()
+
+    # 実行
+    complete_calibration(root, app)
+
+    # 検証
+    assert app.cal_btn.cget("text") == "Reset Calibration"
+    assert app.distance_scale.instate(["disabled"])
+    assert not app.is_calibrating
+    assert app.corrector.is_calibrated()
+    assert app.cal_pbar_var.get() == gui.N_CALIBRATION_SAMPLES
+
+
+def test_reset_calibration_unlocks_slider(root, make_app):
+    """完了後に Reset を押すと、未実施の状態に戻り、スライダーのロックが解除されることを検証する。"""
+    # 準備
+    app = make_app()
+    complete_calibration(root, app)
+
+    # 実行
+    app.onclick_cal_btn()
+
+    # 検証
+    assert app.cal_btn.cget("text") == "Start Calibration"
+    assert not app.distance_scale.instate(["disabled"])
+    assert not app.corrector.is_calibrated()
+    assert app.cal_pbar_var.get() == 0
+
+
+def test_startup_with_calibrated_config_keeps_slider_locked(root, make_app):
+    """キャリブレーション済みの設定ファイルで起動すると、Reset ボタンとスライダーのロックが復元されることを検証する。"""
+    # 準備: スケール 1.5 でキャリブレーションし、設定ファイルに保存
+    app = make_app()
+    app.distance_scale_var.set(1.5)
+    complete_calibration(root, app)
+    app.save_config()
+
+    # 実行: 同じ設定ファイルで起動
+    restored = make_app()
+
+    # 検証
+    assert restored.cal_btn.cget("text") == "Reset Calibration"
+    assert restored.distance_scale.instate(["disabled"])
+    assert restored.corrector.is_calibrated()
+    assert restored.corrector.get_distance_scale() == pytest.approx(1.5)
+    assert restored.distance_scale_var.get() == pytest.approx(1.5)

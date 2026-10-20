@@ -31,6 +31,9 @@ output-file = "NOTICE.txt"
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
+# 既定の --capture=fd（標準出力・標準エラーのファイル記述子をテストごとに差し替える）では、
+# Windows の Tcl/Tk がファイルの読み込み（init.tcl やアイコン画像）に不定期に失敗するため、sys レベルでキャプチャする。
+addopts = "--capture=sys"
 
 [tool.ruff]
 line-length = 120
