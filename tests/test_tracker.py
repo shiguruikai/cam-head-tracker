@@ -324,6 +324,69 @@ def test_save_load_state(corrector):
     np.testing.assert_allclose(pose_orig, pose_new, atol=1e-6)
 
 
+def perform_calibration(corrector, neutral_rot, moving_axis, base_pos):
+    """頭の姿勢を neutral_rot に保ったまま、moving_axis 方向へ前後移動するキャリブレーションを実行するヘルパー"""
+    moving_axis = np.asarray(moving_axis, dtype=float)
+    moving_axis /= np.linalg.norm(moving_axis)
+    for d in (-10.0, -5.0, 0.0, 5.0, 10.0):
+        mat = np.eye(4)
+        mat[:3, :3] = neutral_rot
+        mat[:3, 3] = np.asarray(base_pos) + moving_axis * d
+        assert corrector.add_calibration_sample(mat)
+    corrector.calibrate()
+
+
+# キャリブレーション時の頭部姿勢と移動方向の組み合わせ（カメラの設置状況の違いを表す）
+CALIBRATION_SETUPS = [
+    pytest.param(rot_y(30.0), rot_y(30.0)[:, 2], id="Camera to the side"),
+    pytest.param(rot_x(-20.0) @ rot_y(10.0), (rot_x(-20.0) @ rot_y(10.0))[:, 2], id="Camera above, looking down"),
+    pytest.param(rot_y(15.0) @ rot_z(3.0), [0.3, -0.2, 1.0], id="Moving axis differs from head forward"),
+]
+
+
+@pytest.mark.parametrize("neutral_rot, moving_axis", CALIBRATION_SETUPS)
+def test_rotation_output_is_relative_to_neutral_head(corrector, neutral_rot, moving_axis):
+    """
+    回転出力が、キャリブレーション時の頭部姿勢を基準とした（頭部座標系での）相対回転になるか検証する。
+    カメラの設置角や移動方向には依存しない。
+    """
+    # 準備
+    perform_calibration(corrector, neutral_rot, moving_axis, [-10.0, 5.0, -55.0])
+    yaw, pitch, roll = 25.0, -10.0, 8.0
+    input_mat = np.eye(4)
+    input_mat[:3, :3] = neutral_rot @ rot_y(yaw) @ rot_x(pitch) @ rot_z(roll)
+    input_mat[:3, 3] = [-10.0, 5.0, -55.0]
+
+    # 実行
+    pose = corrector.correct(input_mat)
+
+    # 検証: opentrack 向けに符号を反転した相対回転が出力される
+    assert pose[YAW] == pytest.approx(-yaw, abs=1e-3)
+    assert pose[PITCH] == pytest.approx(-pitch, abs=1e-3)
+    assert pose[ROLL] == pytest.approx(-roll, abs=1e-3)
+
+
+@pytest.mark.parametrize("neutral_rot, moving_axis", CALIBRATION_SETUPS)
+def test_save_load_state_with_tilted_setup(corrector, neutral_rot, moving_axis):
+    """カメラが斜めに設置されている場合も、保存・復元したキャリブレーションで同じ出力になるか検証する。"""
+    # 準備: キャリブレーションし、状態を別のインスタンスに復元（Config の保存・読み込みを模倣）
+    corrector.set_distance_scale(1.5)
+    perform_calibration(corrector, neutral_rot, moving_axis, [-10.0, 5.0, -55.0])
+    restored = PoseCorrector()
+    restored.set_distance_scale(corrector.get_distance_scale())
+    restored.set_calibrated_data(corrector.get_cam_pose(), corrector.get_offset_angles())
+    input_mat = np.eye(4)
+    input_mat[:3, :3] = neutral_rot @ rot_y(-20.0) @ rot_x(12.0) @ rot_z(-6.0)
+    input_mat[:3, 3] = [3.0, -4.0, -48.0]
+
+    # 実行
+    pose_orig = corrector.correct(input_mat)
+    pose_restored = restored.correct(input_mat)
+
+    # 検証: オイラー角を経由して復元するため、float32 の丸め誤差を考慮した許容誤差とする
+    np.testing.assert_allclose(pose_orig, pose_restored, atol=1e-4)
+
+
 def test_opentrack_coordinate_conversion(corrector):
     """
     Opentrack用の座標系変換（符号反転など）が正しく行われているか検証する。

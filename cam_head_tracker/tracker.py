@@ -124,8 +124,12 @@ class MediapipeTracker(Tracker):
 
 class PoseCorrector:
     """
-    カメラの設置位置や角度をキャリブレーションし、
-    トラッキングデータを「モニター正面基準のワールド座標系」に補正するクラス。
+    カメラの設置位置や角度をキャリブレーションし、トラッキングデータを補正するクラス。
+
+    補正後の基準:
+        - 位置: モニター正面基準のワールド座標系（キャリブレーション時の前後移動の方向が Z 軸）。
+        - 回転: キャリブレーション時の頭部姿勢を基準とした相対回転（頭部座標系で表す）。
+          固定されたカメラから見た2つの頭部姿勢の相対回転は、カメラの設置角に依存しない。
 
     キャリブレーション手順:
         1. モニターに正対し、頭を垂直（ロール角ゼロ）に保つ。
@@ -136,9 +140,13 @@ class PoseCorrector:
     """
 
     def __init__(self):
+        self._distance_scale = 1.0
+        self.reset_calibration()
+
+    def reset_calibration(self):
+        """キャリブレーション状態を初期化します。"""
         self._is_calibrated = False
         self._calibration_samples: list[np.ndarray] = []
-        self._distance_scale = 1.0
 
         # カメラ座標系のベクトルをワールド座標系（モニター基準）へ投影するための基底変換行列
         self._camera_to_world_rot = np.eye(3, dtype=np.float32)
@@ -146,20 +154,11 @@ class PoseCorrector:
         # ワールド座標系における原点オフセット（位置補正用ベクトル）
         self._origin_offset = np.zeros(3, dtype=np.float32)
 
-        # 初期姿勢（正対状態）を角度ゼロとするための回転オフセット行列
+        # ワールド座標系におけるキャリブレーション時の頭部姿勢の逆回転（保存・表示用）
         self._zero_rot_offset = np.eye(3, dtype=np.float32)
 
-        # 事前計算用の回転オフセット行列
-        self._combined_rot_offset = self._zero_rot_offset @ self._camera_to_world_rot
-
-    def reset_calibration(self):
-        """キャリブレーション状態を初期化します。"""
-        self._is_calibrated = False
-        self._calibration_samples = []
-        self._camera_to_world_rot = np.eye(3, dtype=np.float32)
-        self._origin_offset = np.zeros(3, dtype=np.float32)
-        self._zero_rot_offset = np.eye(3, dtype=np.float32)
-        self._combined_rot_offset = self._zero_rot_offset @ self._camera_to_world_rot
+        # カメラ座標系におけるキャリブレーション時の頭部姿勢の逆回転（回転出力の基準）
+        self._neutral_head_rot_inv = np.eye(3, dtype=np.float32)
 
     def is_calibrated(self) -> bool:
         """キャリブレーション済みかどうかを返します。"""
@@ -195,6 +194,7 @@ class PoseCorrector:
         return self._origin_offset[X], self._origin_offset[Y], self._origin_offset[Z], yaw, pitch, roll
 
     def get_offset_angles(self) -> Angles:
+        """ワールド座標系におけるキャリブレーション時の頭部姿勢の逆回転を、オイラー角で返します。"""
         yaw, pitch, roll = rotation_matrix_to_euler_angles(self._zero_rot_offset)
         return yaw, pitch, roll
 
@@ -215,8 +215,9 @@ class PoseCorrector:
             offset_angles[0], offset_angles[1], offset_angles[2]
         ).astype(np.float32)
 
-        # 事前計算用の回転オフセット行列の更新
-        self._combined_rot_offset = self._zero_rot_offset @ self._camera_to_world_rot
+        # カメラ座標系での頭部姿勢の逆回転を復元する。
+        # _zero_rot_offset = (R_cw @ R_head).T なので、(R_cw @ R_head).T @ R_cw = R_head.T となる。
+        self._neutral_head_rot_inv = self._zero_rot_offset @ self._camera_to_world_rot
 
     def add_calibration_sample(self, matrix: np.ndarray) -> bool:
         """
@@ -277,8 +278,7 @@ class PoseCorrector:
         # 中心化した位置ベクトル群から、SVDで分散が最大の方向（第1主成分）を抽出
         centered_positions = positions - mean_pos
         _, _, vh = np.linalg.svd(centered_positions)
-        moving_axis = vh[0]  # 最大分散方向（移動軸）の単位ベクトル
-        moving_axis /= np.linalg.norm(moving_axis)
+        moving_axis = vh[0]  # 最大分散方向（移動軸）の単位ベクトル（SVD の右特異ベクトルは正規化済み）
 
         # 移動軸の向きを頭の正面方向に合わせる。
         if moving_axis @ head_forward_vec < 0:
@@ -309,12 +309,12 @@ class PoseCorrector:
         self._origin_offset[Z] = 0  # Z（モニターとの距離）は維持
 
         # 2. 回転オフセット
-        # ワールド座標系における頭の平均的な傾きを算出し、それを打ち消す逆回転（転置行列）をオフセットとする。
+        # 回転出力の基準は、カメラ座標系における頭の平均的な姿勢の逆回転（転置行列）とする。
+        self._neutral_head_rot_inv = avg_head_rot.T.astype(np.float32)
+
+        # 保存・表示用に、ワールド座標系における頭の平均的な姿勢の逆回転も保持する。
         avg_rot_world = self._camera_to_world_rot @ avg_head_rot
         self._zero_rot_offset = avg_rot_world.T
-
-        # correct()の計算負荷軽減のため、基底変換と回転オフセットを合成した行列を事前に計算する。
-        self._combined_rot_offset = self._zero_rot_offset @ self._camera_to_world_rot
 
         self._is_calibrated = True
         self._calibration_samples = []
@@ -335,12 +335,12 @@ class PoseCorrector:
         # カメラの設置角度に基づく回転 + キャリブレーション位置を原点とする並進
         world_pos = self._camera_to_world_rot @ raw_pos + self._origin_offset
 
-        # 回転行列をワールド基準に変換し、同時に初期姿勢を角度ゼロへと正規化
-        # ワールド座標系回転行列 = (回転オフセット行列 @ 基底変換行列) @ カメラ座標系回転行列
-        world_rot = self._combined_rot_offset @ raw_rot
+        # キャリブレーション時の頭部姿勢を基準とした相対回転（頭部座標系で表す）
+        # 基準姿勢では単位行列（角度ゼロ）となり、カメラの設置角には依存しない。
+        relative_rot = self._neutral_head_rot_inv @ raw_rot
 
         # オイラー角へ変換
-        yaw, pitch, roll = rotation_matrix_to_euler_angles(world_rot)
+        yaw, pitch, roll = rotation_matrix_to_euler_angles(relative_rot)
 
         # opentrackの入力仕様に合わせ、符号を調整
         # 出力座標系: X(左), Y(上), Z(手前), Yaw(右), Pitch(上), Roll(反時計)
