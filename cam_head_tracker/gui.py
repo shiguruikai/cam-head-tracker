@@ -32,9 +32,116 @@ DEFAULT_PREVIEW_TEXT_COLOR = "#00FF00"
 # キャリブレーションに必要なサンプルデータ数
 N_CALIBRATION_SAMPLES = 30
 
+# ヘルプボタンで表示するキャリブレーション手順
+CALIBRATION_HELP_TEXT = """
+Calibration steps
+
+1. Adjust [Distance Scale] so that Z roughly matches the actual
+    distance (cm) from the camera to your face.
+    Distance Scale affects only the depth (Z).
+2. Click [Start Calibration].
+3. Keep facing the monitor (not the camera) with your head level,
+    and slowly move straight forward or backward by 15-30 cm.
+4. When the progress bar is full, the camera position and angle
+    are calculated automatically.
+
+To adjust Distance Scale again, click [Reset Calibration] first.
+""".strip()
+
 X, Y, Z, YAW, PITCH, ROLL = 0, 1, 2, 3, 4, 5
 
 P = ParamSpec("P")
+
+
+class HelpTooltip:
+    """
+    ウィジェットにマウスを乗せている間ヘルプを表示するツールチップ。
+    toggle_pin() で表示の固定・解除を切り替えられる。
+    """
+
+    def __init__(self, widget: tk.Widget, text: str):
+        self._widget = widget
+        self._text = text
+        self._window: tk.Toplevel | None = None
+        self._is_pinned = False
+        self._toplevel = widget.winfo_toplevel()
+
+        widget.bind("<Enter>", self._on_enter, add="+")
+        widget.bind("<Leave>", self._on_leave, add="+")
+
+        # ツールチップは transient にすると Windows で表示されなくなるため、
+        # メインウィンドウの移動・最小化・復元に合わせた処理はイベントで行う。
+        self._toplevel.bind("<Configure>", self._on_configure_toplevel, add="+")
+        self._toplevel.bind("<Unmap>", self._on_unmap_toplevel, add="+")
+        self._toplevel.bind("<Map>", self._on_map_toplevel, add="+")
+
+    def is_visible(self) -> bool:
+        return self._window is not None
+
+    def is_pinned(self) -> bool:
+        return self._is_pinned
+
+    def toggle_pin(self):
+        """表示の固定・解除を切り替えます。解除した場合はツールチップを閉じます。"""
+        self._is_pinned = not self._is_pinned
+        if self._is_pinned:
+            self._show()
+        else:
+            self._hide()
+
+    def _on_enter(self, _):
+        self._show()
+
+    def _on_leave(self, _):
+        if not self._is_pinned:
+            self._hide()
+
+    def _on_configure_toplevel(self, event: tk.Event):
+        # 子ウィジェットのイベントも届くため、メインウィンドウ自身のイベントだけを処理する
+        if event.widget is self._toplevel and self._window:
+            self._move_to_widget(self._window)
+
+    def _on_unmap_toplevel(self, event: tk.Event):
+        # メインウィンドウの最小化時は閉じる（固定状態は維持する）
+        if event.widget is self._toplevel:
+            self._hide()
+
+    def _on_map_toplevel(self, event: tk.Event):
+        # メインウィンドウの復元時、固定中であれば再表示する
+        if event.widget is self._toplevel and self._is_pinned:
+            self._show()
+
+    def _show(self):
+        if self._window:
+            return
+
+        window = tk.Toplevel(self._widget)
+        window.wm_overrideredirect(True)
+        tk.Label(
+            window,
+            text=self._text,
+            justify="left",
+            background="#FFFFE0",
+            relief="solid",
+            borderwidth=1,
+            padx=8,
+            pady=6,
+            font=("Segoe UI", 9),
+        ).pack()
+        self._move_to_widget(window)
+        window.lift()
+        self._window = window
+
+    def _hide(self):
+        if self._window:
+            self._window.destroy()
+            self._window = None
+
+    def _move_to_widget(self, window: tk.Toplevel):
+        # ウィジェットの左下に表示する
+        x = self._widget.winfo_rootx()
+        y = self._widget.winfo_rooty() + self._widget.winfo_height() + 2
+        window.wm_geometry(f"+{x}+{y}")
 
 
 class TkUIExecutor:
@@ -210,9 +317,18 @@ class CamHeadTrackerApp(tk.Frame):
         )
         self.distance_scale.pack(fill="x")
 
+        cal_btn_frame = ttk.Frame(cal_labelframe)
+        cal_btn_frame.pack(fill="x", pady=(20, 0))
+
         # キャリブレーションの開始・停止・リセットボタン
-        self.cal_btn = ttk.Button(cal_labelframe, text="Start Calibration", command=self.onclick_cal_btn)
-        self.cal_btn.pack(fill="x", pady=(20, 0))
+        self.cal_btn = ttk.Button(cal_btn_frame, text="Start Calibration", command=self.onclick_cal_btn)
+        self.cal_btn.pack(side="left", fill="x", expand=True)
+
+        # キャリブレーション手順のヘルプボタン（ホバーで表示、クリックで表示を固定・解除）
+        self.cal_help_btn = ttk.Button(cal_btn_frame, text="?", width=3)
+        self.cal_help_btn.pack(side="left", padx=(5, 0))
+        self.cal_help_tooltip = HelpTooltip(self.cal_help_btn, CALIBRATION_HELP_TEXT)
+        self.cal_help_btn.configure(command=self.cal_help_tooltip.toggle_pin)
 
         # キャリブレーションプログレスバー
         self.cal_pbar_var = tk.IntVar(value=0)
